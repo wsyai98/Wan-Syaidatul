@@ -2,15 +2,20 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# Page config and title
+# =============================
+# Step 0: Basic App Setup
+# =============================
 st.set_page_config(page_title="SYAI-Rank", layout="centered")
 st.title("SYAI-Rank: Empowering Sustainable Decisions through Smart Aggregation")
+
 st.markdown("""
-This system uses the **Simplified Yielded Aggregation Index (SYAI)** for Multi-Criteria Decision-Making (MCDM).
-Upload your data, set weights and types, and get smart rankings.
+This tool uses the **Simplified Yielded Aggregation Index (SYAI)** method for Multi-Criteria Decision-Making (MCDM).
+Follow the steps below to compute scores and rank alternatives.
 """)
 
-# Step 1: Upload or input decision matrix
+# =============================
+# Step 1: Input Decision Matrix
+# =============================
 st.header("Step 1: Input Decision Matrix")
 data_source = st.radio("Choose data input method:", ["Upload CSV", "Manual Entry"])
 
@@ -23,14 +28,16 @@ if data_source == "Upload CSV":
         df.index = [f"A{i+1}" for i in range(len(df))]  # Set index to A1, A2, ...
         st.dataframe(df)
 else:
-    num_alternatives = st.number_input("Number of Alternatives", min_value=2, max_value=20, value=3)
-    num_criteria = st.number_input("Number of Criteria", min_value=2, max_value=10, value=3)
+    num_alternatives = st.number_input("Number of Alternatives", min_value=2, value=3)
+    num_criteria = st.number_input("Number of Criteria", min_value=2, value=3)
     df = pd.DataFrame(np.zeros((num_alternatives, num_criteria)),
                       columns=[f"C{i+1}" for i in range(num_criteria)],
                       index=[f"A{i+1}" for i in range(num_alternatives)])
     df = st.data_editor(df)
 
-# Step 2: Input criteria weights and types
+# =============================
+# Step 2: Input Weights & Types
+# =============================
 if df is not None and not df.empty:
     st.header("Step 2: Input Criteria Weights and Types")
     weights = []
@@ -41,22 +48,25 @@ if df is not None and not df.empty:
     with col1:
         st.markdown("### Criteria Weights")
         for i in range(df.shape[1]):
-            weight = st.number_input(f"Weight for {df.columns[i]}", min_value=0.0, max_value=1.0, value=1.0)
-            weights.append(weight)
+            w = st.number_input(f"Weight for {df.columns[i]}", min_value=0.0, max_value=1.0, value=1.0)
+            weights.append(w)
     with col2:
         st.markdown("### Criteria Types")
         for i in range(df.shape[1]):
-            ctype = st.selectbox(f"Type for {df.columns[i]}", ["Benefit", "Cost", "Ideal"], key=i)
-            types.append(ctype)
-            if ctype == "Ideal":
+            t = st.selectbox(f"Type for {df.columns[i]}", ["Benefit", "Cost", "Ideal"], key=i)
+            types.append(t)
+            if t == "Ideal":
                 ideal_val = st.number_input(f"Ideal value for {df.columns[i]}", value=float(df.iloc[:, i].mean()))
                 ideals[i] = ideal_val
 
-# Step 3: Compute SYAI Ranking
+# =============================
+# Step 3: SYAI Calculation
+# =============================
     st.header("Step 3: Compute SYAI Ranking")
     if st.button("Run SYAI Method"):
         norm_matrix = df.copy()
         try:
+            # --- Step 3.1: Normalization ---
             for i, t in enumerate(types):
                 if t == "Benefit":
                     norm_matrix.iloc[:, i] = df.iloc[:, i] / df.iloc[:, i].max()
@@ -66,15 +76,26 @@ if df is not None and not df.empty:
                     ideal = ideals[i]
                     norm_matrix.iloc[:, i] = 1 - (abs(df.iloc[:, i] - ideal) / ideal)
 
+            # --- Step 3.2: Weighted Normalized Matrix ---
             weighted_matrix = norm_matrix * weights
+
+            # --- Step 3.3: Compute SYAI Scores ---
             scores = weighted_matrix.sum(axis=1)
+
+            # --- Step 3.4: Ranking ---
             result_df = pd.DataFrame({
                 "Alternative": df.index,
                 "SYAI Score": scores,
                 "Rank": scores.rank(ascending=False).astype(int)
             }).sort_values(by="SYAI Score", ascending=False)
 
-            st.success("SYAI Ranking Completed")
+            # --- Display Results ---
+            st.success("✅ SYAI Ranking Completed")
+            st.subheader("Normalized Decision Matrix")
+            st.dataframe(norm_matrix)
+            st.subheader("Weighted Normalized Matrix")
+            st.dataframe(weighted_matrix)
+            st.subheader("Final Ranking Result")
             st.dataframe(result_df)
         except Exception as e:
             st.error(f"An error occurred during computation: {e}")
