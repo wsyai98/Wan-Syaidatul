@@ -19,10 +19,11 @@ if data_source == "Upload CSV":
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
         if 'Unnamed: 0' in df.columns:
-            df = df.drop(columns=['Unnamed: 0'])  # remove index column
+            df = df.drop(columns=['Unnamed: 0'])
+        df.index = [f"A{i+1}" for i in range(len(df))]  # Set index to A1, A2, ...
         st.dataframe(df)
 else:
-    num_alternatives = st.number_input("Number of Alternatives", min_value=2, max_value=20, value=4)
+    num_alternatives = st.number_input("Number of Alternatives", min_value=2, max_value=20, value=3)
     num_criteria = st.number_input("Number of Criteria", min_value=2, max_value=10, value=3)
     df = pd.DataFrame(np.zeros((num_alternatives, num_criteria)),
                       columns=[f"C{i+1}" for i in range(num_criteria)],
