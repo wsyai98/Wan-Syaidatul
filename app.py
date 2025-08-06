@@ -11,19 +11,20 @@ uploaded_file = st.file_uploader("Upload your decision matrix in CSV format", ty
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file, index_col=0)
+    df.index.name = "Alternative"
     st.subheader("Decision Matrix")
     st.dataframe(df)
 
     num_criteria = df.shape[1]
     default_weights = [round(1 / num_criteria, 2)] * num_criteria
-    default_types = ["Benefit"] * num_criteria
 
     st.header("Step 2: Input Criteria Weights and Types")
 
     st.subheader("Criteria Weights")
     weights = []
     for i, col in enumerate(df.columns):
-        w = st.number_input(f"Weight for {col}", min_value=0.0, max_value=1.0, step=0.01, value=default_weights[i], format="%.2f")
+        w = st.number_input(f"Weight for {col}", min_value=0.0, max_value=1.0, step=0.01,
+                            value=default_weights[i], format="%.2f")
         weights.append(w)
 
     st.subheader("Criteria Types")
@@ -60,7 +61,7 @@ if uploaded_file:
         # Weighted normalized matrix
         weighted_matrix = norm_matrix * weights
 
-        # Compute ideal and anti-ideal values
+        # Ideal and anti-ideal values (column-wise)
         ideal = weighted_matrix.max()
         anti_ideal = weighted_matrix.min()
 
@@ -70,6 +71,7 @@ if uploaded_file:
         st.subheader("Anti-Ideal (Worst) Values")
         st.write(anti_ideal)
 
+        # Euclidean distance to ideal and anti-ideal
         D_plus = np.sqrt(((weighted_matrix - ideal) ** 2).sum(axis=1))
         D_minus = np.sqrt(((weighted_matrix - anti_ideal) ** 2).sum(axis=1))
 
