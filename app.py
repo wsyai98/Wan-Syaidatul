@@ -17,6 +17,9 @@ if data_source == "Upload CSV":
     uploaded_file = st.file_uploader("Upload your decision matrix CSV", type="csv")
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
+    if 'Unnamed: 0' in df.columns:
+    df = df.drop(columns=['Unnamed: 0'])
+
         st.dataframe(df)
 else:
     num_alternatives = st.number_input("Number of Alternatives", min_value=2, max_value=20, value=4)
