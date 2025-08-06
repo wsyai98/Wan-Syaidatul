@@ -14,7 +14,6 @@ if uploaded_file:
     st.subheader("Decision Matrix")
     st.dataframe(df)
 
-    # Auto-generate default weights and types
     num_criteria = df.shape[1]
     default_weights = [round(1 / num_criteria, 2)] * num_criteria
     default_types = ["Benefit"] * num_criteria
@@ -29,12 +28,15 @@ if uploaded_file:
 
     st.subheader("Criteria Types")
     types = []
+    ideal_values = {}
     for col in df.columns:
-        t = st.selectbox(f"Type for {col}", options=["Benefit", "Cost", "Ideal"], index=0)
-        types.append(t)
+        c_type = st.selectbox(f"Type for {col}", options=["Benefit", "Cost", "Ideal"], index=0, key=f"type_{col}")
+        types.append(c_type)
+        if c_type == "Ideal":
+            val = st.number_input(f"Enter Ideal Value for {col}", value=float(df[col].mean()), key=f"ideal_val_{col}")
+            ideal_values[col] = val
 
     st.header("Step 3: Compute SYAI Ranking")
-
     beta = st.slider("Beta (β) - Ideal vs Anti-Ideal Impact", 0.0, 1.0, 0.5, 0.01)
 
     if st.button("Run SYAI Method"):
@@ -42,15 +44,15 @@ if uploaded_file:
         weights = np.array(weights)
         norm_matrix = df_numeric.copy()
 
-        # Normalize each column
+        # Normalize
         for i, col in enumerate(df.columns):
             if types[i] == "Benefit":
                 norm_matrix[col] = df_numeric[col] / df_numeric[col].max()
             elif types[i] == "Cost":
                 norm_matrix[col] = df_numeric[col].min() / df_numeric[col]
             elif types[i] == "Ideal":
-                ideal_value = st.number_input(f"Enter Ideal Value for {col}", value=float(df_numeric[col].mean()))
-                norm_matrix[col] = 1 - abs(df_numeric[col] - ideal_value) / ideal_value
+                ideal_val = ideal_values.get(col, df_numeric[col].mean())
+                norm_matrix[col] = 1 - abs(df_numeric[col] - ideal_val) / ideal_val
 
         st.subheader("Normalized Decision Matrix")
         st.dataframe(norm_matrix.style.format("{:.4f}"))
@@ -58,7 +60,7 @@ if uploaded_file:
         # Weighted normalized matrix
         weighted_matrix = norm_matrix * weights
 
-        # Compute ideal and anti-ideal
+        # Compute ideal and anti-ideal values
         ideal = weighted_matrix.max()
         anti_ideal = weighted_matrix.min()
 
@@ -84,4 +86,8 @@ if uploaded_file:
         df_result = df_result.sort_values(by="SYAI Score", ascending=False)
 
         st.header("Final Ranking")
-        st.dataframe(df_result.reset_index(drop=True).style.format({"D+": "{:.4f}", "D-": "{:.4f}", "SYAI Score": "{:.4f}"}))
+        st.dataframe(df_result.reset_index(drop=True).style.format({
+            "D+": "{:.4f}",
+            "D-": "{:.4f}",
+            "SYAI Score": "{:.4f}"
+        }))
