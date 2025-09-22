@@ -3,15 +3,16 @@ import pandas as pd
 import numpy as np
 
 # -------------------------------
-# SYAI-Rank — Reference-Accurate
+# SYAI-Rank — Simplified Version
 # -------------------------------
 
 st.set_page_config(page_title="SYAI-Rank", layout="wide")
-st.title("SYAI-Rank: Empowering Sustainable Decisions through Smart Aggregation")
+st.title("SYAI-Rank: Smart Aggregation for Ranking Alternatives")
 
-# Constants (fixed by method)
-C = 0.01  # normalization floor per reference
-st.caption(f"Normalization uses range-based formula with C = {C}.")
+# Constants
+C = 0.01  # normalization floor
+
+st.caption(f"Normalization uses range-based formula with C = {C}. Equal weights are applied automatically.")
 
 # ===== Utilities =====
 def normalize_column(x: pd.Series, ctype: str, goal_val: float | None) -> pd.Series:
@@ -36,39 +37,34 @@ def normalize_column(x: pd.Series, ctype: str, goal_val: float | None) -> pd.Ser
 def compute_syai(df: pd.DataFrame,
                  types: list[str],
                  ideals: dict[str, float],
-                 weights: list[float],
-                 beta: float) -> tuple[pd.DataFrame, pd.Series, pd.Series, pd.Series]:
-    """Return (result_df, D_plus, D_minus, closeness)."""
-    # Ensure numeric & aligned
+                 beta: float) -> pd.DataFrame:
+    """Compute SYAI results with equal weights."""
     df_numeric = df.apply(pd.to_numeric, errors="coerce")
-    if df_numeric.isna().any().any():
-        st.warning("Non-numeric values were coerced to NaN. Please verify your data.")
 
-    # --- Normalization ---
+    # Normalize
     normalized = pd.DataFrame(index=df_numeric.index, columns=df_numeric.columns, dtype=float)
     for j, col in enumerate(df_numeric.columns):
-        ctype = types[j]
-        goal_val = ideals.get(col)
-        normalized[col] = normalize_column(df_numeric[col], ctype, goal_val)
+        normalized[col] = normalize_column(df_numeric[col], types[j], ideals.get(col))
 
-    # --- Weights (as labeled Series for safe alignment) ---
-    w = pd.Series(weights, index=df_numeric.columns, dtype=float)
+    # Equal weights
+    num_criteria = df_numeric.shape[1]
+    w = pd.Series([1/num_criteria]*num_criteria, index=df_numeric.columns, dtype=float)
     weighted = normalized.mul(w, axis=1)
 
-    # --- Ideal / Anti-ideal on WEIGHTED matrix ---
+    # Ideal / Anti-ideal
     ideal = weighted.max(axis=0)
     anti_ideal = weighted.min(axis=0)
 
-    # --- Distances (L1 / Manhattan) ---
+    # Distances (L1)
     D_plus = (weighted.sub(ideal, axis=1).abs()).sum(axis=1)
     D_minus = (weighted.sub(anti_ideal, axis=1).abs()).sum(axis=1)
 
-    # --- Closeness score ---
+    # Closeness score
     denom = beta * D_plus + (1 - beta) * D_minus
     denom = denom.replace(0, np.finfo(float).eps)
     closeness = ((1 - beta) * D_minus) / denom
 
-    # --- Results ---
+    # Results
     result = pd.DataFrame({
         "D+": D_plus,
         "D-": D_minus,
@@ -76,12 +72,11 @@ def compute_syai(df: pd.DataFrame,
     })
     result["Rank"] = result["Closeness Score"].rank(ascending=False, method="min").astype(int)
     result = result.sort_values("Closeness Score", ascending=False)
-    return result, D_plus, D_minus, closeness
+    return result, normalized, weighted, ideal, anti_ideal
 
-# ===== Sidebar: sample file =====
+# ===== Sidebar: Example CSV =====
 with st.sidebar:
     st.markdown("### Example CSV")
-    st.markdown("Download a ready-to-run example for quick testing.")
     st.download_button(
         label="Download sample.csv",
         data=(
@@ -93,25 +88,20 @@ with st.sidebar:
         file_name="sample.csv",
         mime="text/csv"
     )
-    st.info("Tip: After upload, set types to Cost/Benefit/Cost/Ideal and goal=60, β=0.5 to reproduce the paper’s numbers.")
+    st.info("Upload CSV with first column = Alternative.")
 
 # ===== Step 1: Upload =====
 st.header("Step 1: Upload Decision Matrix")
-uploaded = st.file_uploader("Upload CSV (first column can be 'Alternative' for index).", type=["csv"])
+uploaded = st.file_uploader("Upload CSV (first column = Alternative).", type=["csv"])
 
 df = None
 if uploaded:
-    df = pd.read_csv(uploaded)
-    # If user provided an Alternative column, make it the index
-    if "Alternative" in df.columns:
-        df = df.set_index("Alternative")
-    else:
-        # Otherwise, keep numeric columns and auto index
-        pass
+    df = pd.read_csv(uploaded, index_col=0)
+    df.index.name = "Alternative"
     st.subheader("Decision Matrix")
     st.dataframe(df)
 
-# Optional: quick demo button (loads the example without uploading)
+# Optional: quick demo button
 if st.button("Load Example Data"):
     df = pd.DataFrame({
         "Cost": [200, 250, 300],
@@ -123,29 +113,8 @@ if st.button("Load Example Data"):
     st.dataframe(df)
 
 if df is not None and not df.empty:
-    # ===== Step 2: Weights & Types =====
-    st.header("Step 2: Criteria Weights and Types")
-
-    num_criteria = df.shape[1]
-    default_w = np.repeat(1/num_criteria, num_criteria)
-
-    st.subheader("Weights")
-    weights = []
-    for i, col in enumerate(df.columns):
-        w = st.number_input(
-            f"Weight for {col}",
-            min_value=0.0, max_value=1.0, step=0.01,
-            value=float(np.round(default_w[i], 2)),
-            key=f"w_{col}", format="%.2f"
-        )
-        weights.append(w)
-
-    if st.toggle("Normalize weights to sum = 1", value=True):
-        total = sum(weights)
-        if total > 0:
-            weights = [w/total for w in weights]
-
-    st.subheader("Types & (optional) Ideal/Goal values")
+    # ===== Step 2: Types & Goals =====
+    st.header("Step 2: Define Criteria Types")
     types = []
     goal_values = {}
     for col in df.columns:
@@ -164,45 +133,27 @@ if df is not None and not df.empty:
             )
             goal_values[col] = val
 
-    # ===== Step 3: β and Run =====
+    # ===== Step 3: β =====
     st.header("Step 3: Compute SYAI")
     beta = st.slider("β (blend of D+ and D- in closeness score)", 0.0, 1.0, 0.5, 0.01)
 
     if st.button("Run SYAI"):
-        result, Dp, Dm, close = compute_syai(df, types, goal_values, weights, beta)
-
-        # Recompute the intermediate tables for display:
-        # (We repeat small parts to show normalized/weighted/ideal explicitly.)
-        # Normalized:
-        normalized_show = pd.DataFrame(index=df.index, columns=df.columns, dtype=float)
-        for j, col in enumerate(df.columns):
-            normalized_show[col] = normalize_column(df[col], types[j], goal_values.get(col))
-
-        # Weighted:
-        w_series = pd.Series(weights, index=df.columns, dtype=float)
-        weighted_show = normalized_show.mul(w_series, axis=1)
-
-        ideal_show = weighted_show.max(axis=0)
-        anti_show = weighted_show.min(axis=0)
+        result, norm, weighted, ideal, anti = compute_syai(df, types, goal_values, beta)
 
         st.subheader("Normalized Decision Matrix")
-        st.dataframe(normalized_show.style.format("{:.4f}"))
+        st.dataframe(norm.style.format("{:.4f}"))
 
-        st.subheader("Weighted Normalized Matrix")
-        st.dataframe(weighted_show.style.format("{:.4f}"))
+        st.subheader("Weighted Normalized Matrix (equal weights)")
+        st.dataframe(weighted.style.format("{:.4f}"))
 
         st.subheader("Yielded Ideal (A⁺) and Anti-Ideal (A⁻)")
         c1, c2 = st.columns(2)
         with c1:
-            st.write("A⁺ (column-wise max of weighted):")
-            st.write(ideal_show)
+            st.write("A⁺:")
+            st.write(ideal)
         with c2:
-            st.write("A⁻ (column-wise min of weighted):")
-            st.write(anti_show)
-
-        st.subheader("Distances to A⁺ and A⁻ (L1 / Manhattan)")
-        dist_df = pd.DataFrame({"D+": Dp, "D-": Dm})
-        st.dataframe(dist_df.style.format("{:.6f}"))
+            st.write("A⁻:")
+            st.write(anti)
 
         st.header("Final Ranking (SYAI)")
         st.dataframe(
@@ -212,13 +163,3 @@ if df is not None and not df.empty:
                 "Closeness Score": "{:.6f}"
             })
         )
-
-        with st.expander("Notes"):
-            st.markdown(
-                "- **Normalization**: $C + (1-C)\\left(1-\\frac{|x-x^*|}{R}\\right)$ with $C=0.01$, "
-                "$R=$ column range, and $x^*$ from type (max/min/goal).\n"
-                "- **Weights** multiply the normalized matrix **before** computing A⁺/A⁻.\n"
-                "- **Distances** are L1 (sum of absolute differences), matching the reference.\n"
-                "- **Closeness**: $\\dfrac{(1-\\beta)D^-}{\\beta D^+ + (1-\\beta)D^-}$.\n"
-                "- Use the example to reproduce published numbers (A⁺, A⁻, D⁺, D⁻, closeness)."
-            )
