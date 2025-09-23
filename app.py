@@ -1,321 +1,436 @@
+# app.py
 import streamlit as st
-import pandas as pd
-import numpy as np
-from pathlib import Path
-import altair as alt
+import streamlit.components.v1 as components
 
-st.set_page_config(page_title="SYAI-Rank", layout="wide")
+st.set_page_config(page_title="SYAI-Rank (Web UI inside Streamlit)", layout="wide")
 
-# --- Pink/Dark styling (works even without config.toml) ---
+# Optional: soft grey+pink vibe on the Streamlit shell
 st.markdown("""
 <style>
-/* App background: soft pink gradient (light) / dark grey (dark) */
-.stApp {
-  background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 100%) !important;
-}
-[data-testid="stSidebar"] {
-  background: rgba(255, 228, 230, 0.08) !important;
-  backdrop-filter: blur(6px);
-  border-right: 1px solid rgba(236, 72, 153, .15);
-}
-/* Buttons & primary accents */
-.stButton>button, .stDownloadButton>button {
-  background: #ec4899 !important;
-  color: #ffffff !important;
-  border: 1px solid #db2777 !important;
-  border-radius: 12px !important;
-}
-.stButton>button:hover, .stDownloadButton>button:hover { background:#db2777 !important; }
+.stApp { background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 120%) !important; }
+[data-testid="stSidebar"] { background: rgba(255, 228, 230, 0.08) !important; backdrop-filter: blur(6px); }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("SYAI-Rank (C=0.01, L1 distances, customizable weights)")
+html = r"""
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SYAI-Rank</title>
+  <!-- React + ReactDOM (UMD) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- PapaParse -->
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- Recharts (UMD) -->
+  <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+  <!-- Basic CSS (grey + pink) -->
+  <style>
+    :root {
+      --bg-dark: #0b0b0f;
+      --card-dark: #0f1115;
+      --card-light: #ffffffcc;
+      --text-light: #f5f5f5;
+      --text-dark: #1f2937;
+      --pink: #ec4899;
+      --pink-700: #db2777;
+      --neutral-800: #1f2937;
+      --neutral-700: #374151;
+      --neutral-600: #4b5563;
+      --neutral-200: #e5e7eb;
+      --neutral-100: #f3f4f6;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      color: var(--text-light);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: linear-gradient(180deg, var(--bg-dark) 0%, var(--bg-dark) 35%, #ffe4e6 120%);
+    }
+    a { color: var(--pink); text-decoration: none; }
+    .container { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
+    .header { display:flex; align-items:center; justify-content:space-between; margin-bottom: 16px; }
+    .title { font-weight: 800; font-size: 28px; color: #fce7f3; }
+    .btn { display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius: 12px; border:1px solid var(--pink-700); background:var(--pink); color:white; cursor:pointer; }
+    .btn:hover { background: var(--pink-700); }
+    .toggle { padding:8px 12px; border-radius: 12px; border:1px solid #333; background:#111; color:#eee; cursor:pointer; }
+    .tabs { display:flex; gap:8px; margin: 12px 0; }
+    .tab { padding:10px 14px; border-radius: 12px; border:1px solid #333; background:#202329; color:#ddd; cursor:pointer; }
+    .tab.active { background: var(--pink); border-color: var(--pink-700); color:#fff; }
+    .grid { display:grid; gap:16px; grid-template-columns: 1fr; }
+    @media (min-width: 1024px) { .grid { grid-template-columns: 1fr 2fr; } }
+    .card {
+      background: linear-gradient(180deg, #ffffffb3 0%, #ffffffcc 100%);
+      color: var(--text-dark);
+      border-radius: 16px; padding: 18px; border: 1px solid #fbcfe8; backdrop-filter: blur(6px);
+    }
+    .card.dark { background: #0f1115b3; color: #e5e7eb; border-color: #262b35; }
+    .section-title { font-weight: 700; font-size: 18px; margin-bottom: 12px; color:#9f1239; }
+    .dark .section-title { color:#f9a8d4; }
+    .field { margin-bottom:8px; }
+    .label { display:block; font-size: 12px; opacity:.8; margin-bottom: 4px; }
+    input[type="text"], input[type="number"], select {
+      width: 100%; padding:10px 12px; border-radius:10px; border:1px solid #ddd; background:#f8fafc; color:#111;
+    }
+    .dark input[type="text"], .dark input[type="number"], .dark select {
+      background:#1f2937; border-color:#374151; color:#e5e7eb;
+    }
+    .table-wrap { overflow:auto; max-height: 360px; }
+    table { width:100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
+    .dark th, .dark td { border-bottom-color: #2a2f38; }
+    .chip { display:inline-block; padding: 6px 10px; border-radius: 999px; background: #fee2e2; color:#b91c1c; font-size:12px; }
+    .dark .chip { background: #111827; color:#fca5a5; }
+    .hint { font-size: 12px; opacity:.8; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap: wrap; }
+    .mt6 { margin-top: 24px; } .mb6 { margin-bottom: 24px; } .mt2 { margin-top: 8px; }
+    .w100 { width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
 
-C = 0.01  # normalization floor
+  <script>
+  (function() {
+    const { useState, useMemo, useEffect } = React;
+    const {
+      ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+      Tooltip, LabelList, LineChart, Line, Cell
+    } = Recharts;
 
-# ---------- Core math ----------
-def normalize_column(x: pd.Series, ctype: str, goal_val: float | None) -> pd.Series:
-    x = x.astype(float)
-    R = x.max() - x.min()
-    if ctype == "Benefit":
-        x_star = x.max()
-    elif ctype == "Cost":
-        x_star = x.min()
-    else:  # Ideal (Goal)
-        x_star = float(goal_val) if goal_val is not None else float(x.mean())
+    const C = 0.01; // normalization floor
+    const sampleCSV =
+`Alternative,Cost,Quality,Delivery Time,Temperature
+A1,200,8,4,30
+A2,250,7,5,60
+A3,300,9,6,85
+`;
 
-    if R == 0 or np.isclose(R, 0.0):
-        norm = pd.Series(1.0, index=x.index, dtype=float)
-    else:
-        norm = C + (1 - C) * (1 - (x - x_star).abs() / R)
-        norm = norm.clip(lower=C, upper=1.0)
-    return norm
+    function parseCSV(file, onDone) {
+      Papa.parse(file, {
+        header: true, skipEmptyLines: true,
+        complete: (res) => onDone({ columns: res.meta.fields || [], rows: res.data || [] }),
+      });
+    }
 
-def compute_syai(df: pd.DataFrame,
-                 types: list[str],
-                 ideals: dict[str, float],
-                 weights: pd.Series,
-                 beta: float):
-    X = df.apply(pd.to_numeric, errors="coerce")
-    if X.isna().any().any():
-        st.warning("Non-numeric values were coerced to NaN. Check your data.")
+    function computeSYAI({ rows, columns, types, ideals, rawWeights, beta }) {
+      const crits = columns.filter(c => c !== "Alternative");
+      const m = crits.length;
 
-    # Normalize
-    N = pd.DataFrame(index=X.index, columns=X.columns, dtype=float)
-    for j, col in enumerate(X.columns):
-        N[col] = normalize_column(X[col], types[j], ideals.get(col))
+      const alts = Array.from(new Set(rows.map(r => String(r["Alternative"])).filter(Boolean)));
 
-    # Weights (assumed normalized)
-    w = weights.reindex(X.columns).astype(float)
+      const X = {}; alts.forEach(a => X[a] = {});
+      rows.forEach(r => {
+        const a = String(r["Alternative"]);
+        crits.forEach(c => {
+          const v = parseFloat(String(r[c]).replace(/,/g, ""));
+          X[a][c] = Number.isFinite(v) ? v : NaN;
+        });
+      });
 
-    # Weighted matrix
-    W = N.mul(w, axis=1)
+      const N = {}; alts.forEach(a => N[a] = {});
+      crits.forEach(c => {
+        const colVals = alts.map(a => X[a][c]);
+        const max = Math.max(...colVals);
+        const min = Math.min(...colVals);
+        const R = max - min;
+        let xStar;
+        if (types[c] === "Benefit") xStar = max;
+        else if (types[c] === "Cost") xStar = min;
+        else {
+          const g = parseFloat(ideals[c]);
+          xStar = Number.isFinite(g) ? g : colVals.reduce((s,v)=>s+(Number.isFinite(v)?v:0),0)/colVals.length;
+        }
+        if (Math.abs(R) < 1e-12) {
+          alts.forEach(a => N[a][c] = 1.0);
+        } else {
+          alts.forEach(a => {
+            const x = X[a][c];
+            const norm = C + (1 - C) * (1 - Math.abs(x - xStar)/R);
+            N[a][c] = Math.max(C, Math.min(1, norm));
+          });
+        }
+      });
 
-    # A+ / A-
-    A_plus = W.max(axis=0)
-    A_minus = W.min(axis=0)
+      const w = {}; let sumw = 0;
+      crits.forEach(c => {
+        const v = parseFloat(String(rawWeights[c] ?? 0));
+        const safe = Number.isFinite(v) ? Math.max(0, v) : 0;
+        w[c] = safe; sumw += safe;
+      });
+      if (sumw <= 0) crits.forEach(c => w[c] = 1/m); else crits.forEach(c => w[c] = w[c]/sumw);
 
-    # L1 distances
-    D_plus = (W.sub(A_plus, axis=1).abs()).sum(axis=1)
-    D_minus = (W.sub(A_minus, axis=1).abs()).sum(axis=1)
+      const W = {}; alts.forEach(a => W[a] = {});
+      const A_plus = {}, A_minus = {};
+      crits.forEach(c => {
+        let max = -Infinity, min = Infinity;
+        alts.forEach(a => {
+          W[a][c] = N[a][c] * w[c];
+          if (W[a][c] > max) max = W[a][c];
+          if (W[a][c] < min) min = W[a][c];
+        });
+        A_plus[c] = max; A_minus[c] = min;
+      });
 
-    # Closeness
-    denom = beta * D_plus + (1 - beta) * D_minus
-    denom = denom.replace(0, np.finfo(float).eps)
-    closeness = ((1 - beta) * D_minus) / denom
+      const rowsOut = alts.map(a => {
+        let Dp = 0, Dm = 0;
+        crits.forEach(c => { Dp += Math.abs(W[a][c] - A_plus[c]); Dm += Math.abs(W[a][c] - A_minus[c]); });
+        const denom = beta*Dp + (1-beta)*Dm || Number.EPSILON;
+        const closeness = ((1-beta) * Dm) / denom;
+        return { Alternative: a, Dp, Dm, Closeness: closeness };
+      });
 
-    res = pd.DataFrame({"D+": D_plus, "D-": D_minus, "Closeness Score": closeness})
-    res["Rank"] = res["Closeness Score"].rank(ascending=False, method="min").astype(int)
-    res = res.sort_values("Closeness Score", ascending=False)
+      rowsOut.sort((a,b) => b.Closeness - a.Closeness);
+      rowsOut.forEach((r,i,arr) => {
+        r.Rank = arr.slice(0,i).filter(x => x.Closeness > r.Closeness).length + 1;
+      });
 
-    return res, N, W, A_plus, A_minus, w
+      return { alts, crits, W, A_plus, A_minus, w, resRows: rowsOut };
+    }
 
-def normalize_weights_any(raw_w: pd.Series) -> pd.Series:
-    raw_w = raw_w.fillna(0).astype(float)
-    total = raw_w.sum()
-    if total <= 0:
-        st.warning("All custom weights are zero; defaulting to equal weights.")
-        return pd.Series([1.0/len(raw_w)]*len(raw_w), index=raw_w.index, dtype=float)
-    return raw_w / total
+    function App() {
+      const [isDark, setIsDark] = useState(true);
+      useEffect(() => { document.documentElement.classList.toggle('dark', isDark); }, [isDark]);
 
-# ---------- Sidebar ----------
-with st.sidebar:
-    st.markdown("### Navigation")
-    tab = st.radio("Go to:", ["SYAI Ranking", "Comparison with Other Methods"])
-    st.markdown("---")
-    st.markdown("### Sample CSV (first column = Alternative)")
-    st.download_button(
-        "Download sample.csv",
-        data=("Alternative,Cost,Quality,Delivery Time,Temperature\n"
-              "A1,200,8,4,30\n"
-              "A2,250,7,5,60\n"
-              "A3,300,9,6,85\n"),
-        file_name="sample.csv",
-        mime="text/csv",
-    )
-    run_test_click = st.button("Reproduce Paper Example (Test)")
+      const [tab, setTab] = useState("rank");
+      const [data, setData] = useState({ columns: [], rows: [] });
+      const [types, setTypes] = useState({});
+      const [ideals, setIdeals] = useState({});
+      const [weights, setWeights] = useState({});
+      const [beta, setBeta] = useState(0.5);
 
-# persist test mode
-if "run_test" not in st.session_state:
-    st.session_state.run_test = False
-if run_test_click:
-    st.session_state.run_test = True
+      const [urlScatter, setUrlScatter] = useState("");
+      const [urlCorr, setUrlCorr] = useState("");
 
-# ---------- SYAI TAB ----------
-if tab == "SYAI Ranking":
-    st.header("Step 1: Upload Decision Matrix")
-    file = st.file_uploader("Upload CSV (first column must be Alternative)", type=["csv"])
+      const onCSVLoaded = ({ columns, rows }) => {
+        if (!columns?.length) return;
+        let cols = columns;
+        if (cols[0] !== "Alternative") {
+          cols = ["Alternative", ...cols.filter(c => c !== "Alternative")];
+        }
+        const crits = cols.filter(c => c !== "Alternative");
+        const t = {...types}, w = {...weights}, g = {...ideals};
+        crits.forEach(c => {
+          if (!t[c]) t[c] = "Benefit";
+          if (!(c in w)) w[c] = 1;
+          if (!(c in g)) g[c] = "";
+        });
+        setTypes(t); setWeights(w); setIdeals(g);
+        setData({ columns: cols, rows });
+      };
 
-    df = None
-    if st.session_state.run_test:
-        df = pd.DataFrame({
-            "Cost": [200, 250, 300],
-            "Quality": [8, 7, 9],
-            "Delivery Time": [4, 5, 6],
-            "Temperature": [30, 60, 85],
-        }, index=["A1", "A2", "A3"])
-        df.index.name = "Alternative"
-        st.success("Loaded paper example data.")
-    elif file:
-        df = pd.read_csv(file, index_col=0)
-        df.index.name = "Alternative"
+      const result = useMemo(() => {
+        if (!data.columns.length || !data.rows.length) return null;
+        const crits = data.columns.filter(c=>c!=="Alternative");
+        if (!crits.length) return null;
+        return computeSYAI({ rows: data.rows, columns: data.columns, types, ideals, rawWeights: weights, beta });
+      }, [data, types, ideals, weights, beta]);
 
-    if df is not None:
-        st.subheader("Decision Matrix")
-        st.dataframe(df)
+      const neutralPalette = ["#64748b","#94a3b8","#cbd5e1","#475569","#334155","#1f2937","#9ca3af","#6b7280","#a3a3a3","#737373"];
 
-    if df is not None and not df.empty:
-        # Step 2: Types
-        st.header("Step 2: Define Criteria Types")
-        types = []
-        ideals = {}
-
-        if st.session_state.run_test:
-            default_types = {"Cost": "Cost", "Quality": "Benefit",
-                             "Delivery Time": "Cost", "Temperature": "Ideal (Goal)"}
-            default_goal = {"Temperature": 60.0}
-        else:
-            default_types, default_goal = {}, {}
-
-        for col in df.columns:
-            default_idx = 0
-            if col in default_types:
-                if default_types[col] == "Cost":
-                    default_idx = 1
-                elif default_types[col] == "Ideal (Goal)":
-                    default_idx = 2
-
-            ctype = st.selectbox(
-                f"Type for {col}",
-                ["Benefit", "Cost", "Ideal (Goal)"],
-                index=default_idx,
-                key=f"type_{col}"
+      return React.createElement("div", { className:"container" },
+        React.createElement("div", { className:"header" },
+          React.createElement("div", { className:"title" }, "SYAI-Rank"),
+          React.createElement("div", { className:"row" },
+            React.createElement("a", {
+              className: "btn",
+              href: "data:text/csv;charset=utf-8," + encodeURIComponent(sampleCSV),
+              download: "sample.csv"
+            }, "⬇️ Sample CSV"),
+            React.createElement("button", { className:"toggle", onClick:()=>setIsDark(!isDark) },
+              isDark ? "🌙 Dark" : "☀️ Light"
             )
-            types.append(ctype)
+          )
+        ),
 
-            if ctype == "Ideal (Goal)":
-                val_default = float(default_goal.get(col, df[col].mean()))
-                val = st.number_input(
-                    f"Ideal (Goal) value for {col}",
-                    value=val_default,
-                    key=f"goal_{col}"
+        React.createElement("div", { className:"tabs" },
+          React.createElement("button", { className: "tab " + (tab==="rank"?"active":""), onClick:()=>setTab("rank") }, "SYAI Ranking"),
+          React.createElement("button", { className: "tab " + (tab==="compare"?"active":""), onClick:()=>setTab("compare") }, "Comparison with Other Methods"),
+        ),
+
+        tab === "rank" && React.createElement("div", { className:"grid" },
+          // Left column
+          React.createElement("div", { className:"col" },
+            React.createElement("div", { className:"card dark" },
+              React.createElement("div", { className:"section-title" }, "Step 1: Upload Decision Matrix"),
+              React.createElement("label", { className:"btn", htmlFor:"csvFile" }, "📤 Choose CSV"),
+              React.createElement("input", { id:"csvFile", type:"file", accept:".csv", style:{display:"none"},
+                onChange:(e)=>{ const f = e.target.files?.[0]; if (f) parseCSV(f, onCSVLoaded); } }),
+              React.createElement("p", { className:"hint mt2" }, "First column must be ", React.createElement("b", null, "Alternative"), ".")
+            ),
+
+            !!data.columns.length && React.createElement("div", { className:"card dark" },
+              React.createElement("div", { className:"section-title" }, "Step 2: Define Criteria Types"),
+              React.createElement("div", { className:"row" },
+                data.columns.filter(c=>c!=="Alternative").map((c)=>
+                  React.createElement("div", { key:c, style:{minWidth:240}},
+                    React.createElement("div", { className:"label" }, c),
+                    React.createElement("select", {
+                      value: types[c] || "Benefit",
+                      onChange:(e)=> setTypes({...types, [c]: e.target.value})
+                    },
+                      React.createElement("option", null, "Benefit"),
+                      React.createElement("option", null, "Cost"),
+                      React.createElement("option", null, "Ideal (Goal)")
+                    ),
+                    (types[c]==="Ideal (Goal)") && React.createElement("input", {
+                      className:"mt2", type:"number", step:"any", placeholder:"Goal value",
+                      value: String(ideals[c] ?? ""),
+                      onChange:(e)=> setIdeals({...ideals, [c]: e.target.value})
+                    })
+                  )
                 )
-                ideals[col] = float(val)
+              )
+            ),
 
-        # Step 3: Weights (deferred normalization)
-        st.header("Step 3: Set Weights")
-        m = df.shape[1]
-
-        if st.session_state.run_test:
-            raw_w = pd.Series([1.0/m]*m, index=df.columns, dtype=float)
-            st.info("Test mode uses equal weights to match the paper example.")
-        else:
-            mode = st.radio("Weighting scheme", ["Equal (1/m)", "Custom"], horizontal=True)
-            if mode == "Custom":
-                st.caption("Enter raw weights (they’ll be normalized when you run SYAI).")
-                cols = st.columns(min(4, m))
-                weight_inputs = {}
-                for j, col in enumerate(df.columns):
-                    with cols[j % len(cols)]:
-                        weight_inputs[col] = st.number_input(
-                            f"w({col})",
-                            min_value=0.0,
-                            value=0.0,
-                            step=0.001,
-                            format="%.6f",
-                            key=f"w_{col}"
-                        )
-                raw_w = pd.Series(weight_inputs, dtype=float)
-                st.write("Raw weights entered:")
-                st.dataframe(raw_w.to_frame("Raw").T)
-            else:
-                raw_w = pd.Series([1.0/m]*m, index=df.columns, dtype=float)
-                st.caption("Equal weights selected (1/m each).")
-
-        # Step 4: β + Run
-        st.header("Step 4: Compute SYAI")
-        beta = st.slider("β (blend of D+ and D-)", 0.0, 1.0, 0.5, 0.01)
-
-        if st.button("Run SYAI"):
-            w = normalize_weights_any(raw_w)
-            result, N, W, A_plus, A_minus, w_used = compute_syai(df, types, ideals, w, beta)
-
-            st.subheader("Normalized weights used (sum=1)")
-            st.dataframe(w_used.to_frame("Weight").T.style.format("{:.6f}"))
-
-            st.subheader("Final Ranking (SYAI)")
-            st.dataframe(
-                result.reset_index().rename(columns={"index": "Alternative"}).style.format({
-                    "D+": "{:.6f}",
-                    "D-": "{:.6f}",
-                    "Closeness Score": "{:.6f}",
-                })
-            )
-
-            # --- Visualizations (Altair) ---
-            vis_df = result.sort_values("Rank").reset_index().rename(columns={"index": "Alternative"})
-            vis_df["Alternative"] = vis_df["Alternative"].astype(str)
-
-            pink_palette = ["#ec4899","#f472b6","#db2777","#fb7185",
-                            "#fda4af","#f0abfc","#a78bfa","#f9a8d4",
-                            "#f87171","#94a3b8"]
-
-            st.subheader("Ranking Visualization — Bar")
-            bar = (
-                alt.Chart(vis_df)
-                .mark_bar()
-                .encode(
-                    x=alt.X("Alternative:N", sort=None, title="Alternative"),
-                    y=alt.Y("Closeness Score:Q", title="Closeness Score"),
-                    color=alt.Color("Alternative:N", legend=None,
-                                    scale=alt.Scale(range=pink_palette)),
-                    tooltip=["Alternative", alt.Tooltip("Closeness Score:Q", format=".4f"), "Rank:Q"],
+            !!data.columns.length && React.createElement("div", { className:"card dark" },
+              React.createElement("div", { className:"section-title" }, "Step 3: Set Weights (raw; normalized on run)"),
+              React.createElement("div", { className:"row" },
+                data.columns.filter(c=>c!=="Alternative").map((c)=>
+                  React.createElement("div", { key:c, style:{minWidth:160}},
+                    React.createElement("div", { className:"label" }, "w(", c, ")"),
+                    React.createElement("input", {
+                      type:"number", step:"0.001", min:"0",
+                      value: String(weights[c] ?? 0),
+                      onChange:(e)=> setWeights({...weights, [c]: e.target.value})
+                    })
+                  )
                 )
-                .properties(height=360)
-            )
-            st.altair_chart(bar, use_container_width=True)
+              )
+            ),
 
-            st.subheader("Ranking Visualization — Line")
-            line = (
-                alt.Chart(vis_df)
-                .mark_line(point=True, color="#ec4899")
-                .encode(
-                    x=alt.X("Rank:O", title="Rank (1 = best)"),
-                    y=alt.Y("Closeness Score:Q", title="Closeness Score"),
-                    tooltip=["Alternative","Rank:Q", alt.Tooltip("Closeness Score:Q", format=".4f")],
+            !!data.columns.length && React.createElement("div", { className:"card dark" },
+              React.createElement("div", { className:"section-title" }, "Step 4: β (blend of D⁺ and D⁻)"),
+              React.createElement("input", { type:"range", min:0, max:1, step:0.01, value:beta,
+                onChange:(e)=> setBeta(parseFloat(e.target.value)), className:"w100" }),
+              React.createElement("div", { className:"hint mt2" }, "β = ", React.createElement("b", null, beta.toFixed(2)))
+            )
+          ),
+
+          // Right column
+          React.createElement("div", { className:"col" },
+            !!data.columns.length && React.createElement("div", { className:"card" },
+              React.createElement("div", { className:"section-title" }, "Decision Matrix (first 10 rows)"),
+              React.createElement("div", { className:"table-wrap" },
+                React.createElement("table", null,
+                  React.createElement("thead", null,
+                    React.createElement("tr", null,
+                      data.columns.map(c => React.createElement("th", { key:c }, c))
+                    )
+                  ),
+                  React.createElement("tbody", null,
+                    (data.rows || []).slice(0,10).map((r, i) =>
+                      React.createElement("tr", { key:i },
+                        data.columns.map(c => React.createElement("td", { key:c }, String(r[c] ?? "")))
+                      )
+                    )
+                  )
                 )
-                .properties(height=320)
+              )
+            ),
+
+            !!result && React.createElement("div", { className:"card" },
+              React.createElement("div", { className:"section-title" }, "Final Ranking (SYAI)"),
+              React.createElement("div", { className:"table-wrap" },
+                React.createElement("table", null,
+                  React.createElement("thead", null,
+                    React.createElement("tr", null,
+                      React.createElement("th", null, "Alternative"),
+                      React.createElement("th", null, "D+"),
+                      React.createElement("th", null, "D-"),
+                      React.createElement("th", null, "Closeness"),
+                      React.createElement("th", null, "Rank")
+                    )
+                  ),
+                  React.createElement("tbody", null,
+                    result.resRows.map(r =>
+                      React.createElement("tr", { key:r.Alternative },
+                        React.createElement("td", null, r.Alternative),
+                        React.createElement("td", null, r.Dp.toFixed(6)),
+                        React.createElement("td", null, r.Dm.toFixed(6)),
+                        React.createElement("td", null, r.Closeness.toFixed(6)),
+                        React.createElement("td", null, r.Rank)
+                      )
+                    )
+                  )
+                )
+              ),
+
+              // Bar chart (neutral colors)
+              React.createElement("div", { className:"mt6" },
+                React.createElement("div", { className:"hint mb6" }, "Ranking — Bar"),
+                React.createElement("div", { style:{ width:"100%", height:"340px" } },
+                  React.createElement(ResponsiveContainer, null,
+                    React.createElement(BarChart, { data: result.resRows.map(r=>({ name:r.Alternative, value:r.Closeness })) , margin:{ top:10, right:20, left:0, bottom:30 } },
+                      React.createElement(CartesianGrid, { strokeDasharray:"3 3" }),
+                      React.createElement(XAxis, { dataKey:"name", angle:-25, textAnchor:"end", interval:0, height:50 }),
+                      React.createElement(YAxis, null),
+                      React.createElement(Tooltip, { formatter: (v)=> Number(v).toFixed(6) }),
+                      React.createElement(Bar, { dataKey:"value" },
+                        result.resRows.map((_, i) => React.createElement(Cell, { key:i, fill: ["#64748b","#94a3b8","#cbd5e1","#475569","#334155","#1f2937","#9ca3af","#6b7280","#a3a3a3","#737373"][i%10] })),
+                        React.createElement(LabelList, { dataKey:"value", position:"top", formatter:(v)=> Number(v).toFixed(3) })
+                      )
+                    )
+                  )
+                )
+              ),
+
+              // Line chart (grey stroke)
+              React.createElement("div", { className:"mt6" },
+                React.createElement("div", { className:"hint mb6" }, "Ranking — Line"),
+                React.createElement("div", { style:{ width:"100%", height:"300px" } },
+                  React.createElement(ResponsiveContainer, null,
+                    React.createElement(LineChart, { data: result.resRows.map(r=>({ rank:r.Rank, value:r.Closeness, name:r.Alternative })) , margin:{ top:10, right:20, left:0, bottom:10 } },
+                      React.createElement(CartesianGrid, { strokeDasharray:"3 3" }),
+                      React.createElement(XAxis, { dataKey:"rank" }),
+                      React.createElement(YAxis, null),
+                      React.createElement(Tooltip, { formatter: (v)=> Number(v).toFixed(6), labelFormatter:(l)=> "Rank " + l }),
+                      React.createElement(Line, { type:"monotone", dataKey:"value", stroke:"#64748b", dot:true })
+                    )
+                  )
+                )
+              )
             )
-            st.altair_chart(line, use_container_width=True)
+          )
+        ),
 
-# ---------- COMPARISON TAB ----------
-if tab == "Comparison with Other Methods":
-    st.header("Comparison of SYAI with Other MCDM Methods")
-    st.markdown("""
-    This section provides a comparison of **SYAI** against TOPSIS, VIKOR, SAW, COBRA,
-    WASPAS, and MOORA. Use either **URL** (raw GitHub) or **upload** the images. If you
-    add files to the repo under `assets/`, they’ll load automatically.
-    """)
+        tab === "compare" && React.createElement("div", { className:"grid" },
+          React.createElement("div", { className:"card dark" },
+            React.createElement("div", { className:"section-title" }, "Load Images (URLs or Upload)"),
+            React.createElement("div", { className:"field" },
+              React.createElement("div", { className:"label" }, "Scatter matrix image URL (raw GitHub)"),
+              React.createElement("input", { type:"text", value: urlScatter, onChange:(e)=> setUrlScatter(e.target.value) })
+            ),
+            urlScatter && React.createElement("img", { src:urlScatter, alt:"scatter", style:{width:"100%", borderRadius:12, border:"1px solid #2a2f38"} }),
+            React.createElement("div", { className:"field mt2" },
+              React.createElement("div", { className:"label" }, "Correlation heatmap image URL (raw GitHub)"),
+              React.createElement("input", { type:"text", value: urlCorr, onChange:(e)=> setUrlCorr(e.target.value) })
+            ),
+            urlCorr && React.createElement("img", { src:urlCorr, alt:"corr", style:{width:"100%", borderRadius:12, border:"1px solid #2a2f38"} }),
+            React.createElement("p", { className:"hint mt2" }, "Tip: use raw GitHub links that end in .png or .jpg, or any public image URL.")
+          ),
 
-    st.markdown("#### Option A: Load images from URL")
-    url_scatter = st.text_input("Scatter matrix image URL (raw GitHub)")
-    url_corr    = st.text_input("Correlation heatmap image URL (raw GitHub)")
+          React.createElement("div", { className:"card" },
+            React.createElement("div", { className:"section-title" }, "How to read the figures"),
+            React.createElement("ul", null,
+              React.createElement("li", null, React.createElement("b", null, "Scatter matrix"), " shows pairwise score relationships (each dot = one alternative)."),
+              React.createElement("li", null, React.createElement("b", null, "Correlation heatmap"), " highlights similarity of scores/rankings across methods (darker = stronger agreement)."),
+              React.createElement("li", null, "Use these to validate whether SYAI trends align with or diverge from other methods.")
+            )
+          )
+        )
+      );
+    }
 
-    shown_any = False
-    if url_scatter:
-        st.image(url_scatter, caption="Scatter Matrix for Method Scores", use_container_width=True)
-        shown_any = True
-    if url_corr:
-        st.image(url_corr, caption="Correlation Heatmap of Method Scores", use_container_width=True)
-        shown_any = True
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(React.createElement(App));
+  })();
+  </script>
+</body>
+</html>
+"""
 
-    st.markdown("#### Option B: Upload images")
-    up_scatter = st.file_uploader("Upload scatter matrix (.png/.jpg)", type=["png","jpg","jpeg"], key="up_scatter")
-    up_corr    = st.file_uploader("Upload correlation heatmap (.png/.jpg)", type=["png","jpg","jpeg"], key="up_corr")
-
-    if up_scatter is not None:
-        st.image(up_scatter, caption="Scatter Matrix for Method Scores (uploaded)", use_container_width=True)
-        shown_any = True
-    if up_corr is not None:
-        st.image(up_corr, caption="Correlation Heatmap of Method Scores (uploaded)", use_container_width=True)
-        shown_any = True
-
-    # Built-in repo assets fallback
-    if not shown_any:
-        assets_scatter = Path("assets/scatter_matrix.png")
-        assets_corr    = Path("assets/corr_matrix.png")
-        if assets_scatter.exists():
-            st.image(str(assets_scatter), caption="Scatter Matrix for Method Scores", use_container_width=True)
-            shown_any = True
-        if assets_corr.exists():
-            st.image(str(assets_corr), caption="Correlation Heatmap of Method Scores", use_container_width=True)
-            shown_any = True
-        if not shown_any:
-            st.warning("No images found. Provide URLs, upload files, or add PNGs under assets/.")
-
-    st.markdown("""
-    **How to read this:**
-    - The **scatter matrix** shows pairwise score relationships (each dot = one alternative).
-    - The **correlation heatmap** highlights similarity of scores/rankings across methods (darker = stronger agreement).
-    - Use these to validate whether SYAI trends align with or diverge from other methods.
-    """)
+# Render the embedded React app inside Streamlit
+components.html(html, height=1700, scrolling=True)
