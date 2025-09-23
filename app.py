@@ -3,7 +3,7 @@ import streamlit.components.v1 as components
 
 st.set_page_config(page_title="SYAI-Rank (Web UI)", layout="wide")
 
-# Soft shell behind the embed
+# soft background for the Streamlit shell behind the embed
 st.markdown("""
 <style>
 .stApp { background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 120%) !important; }
@@ -41,6 +41,8 @@ html = r"""
   .container{max-width:1200px;margin:24px auto;padding:0 16px}
   .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
   .title{font-weight:800;font-size:28px;color:#fce7f3}
+  body.theme-light .title{color:#000 !important;} /* make title black in Light */
+
   .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
   .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid var(--pink-700);background:var(--pink);color:#fff;cursor:pointer}
   .btn:hover{background:var(--pink-700)}
@@ -60,6 +62,8 @@ html = r"""
   body.theme-light .card.dark{background:#fff;color:#111;border-color:#e5e7eb}
 
   .section-title{font-weight:700;font-size:18px;margin-bottom:12px;color:#f9a8d4}
+  /* make only the left "Step X" headings black */
+  .section-title.step{color:#000 !important;}
   .label{display:block;font-size:12px;opacity:.85;margin-bottom:4px}
 
   input[type="text"],input[type="number"],select{
@@ -68,7 +72,7 @@ html = r"""
   .hint{font-size:12px;opacity:.8}
 
   .table-wrap{overflow:auto;max-height:360px}
-  table{width:100%;border-collapse:collapse;font-size:14px;color:#000} /* force black inside tables */
+  table{width:100%;border-collapse:collapse;font-size:14px;color:#000} /* force black text in tables */
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e5e7eb}
 
   .mt2{margin-top:8px}.mt4{margin-top:16px}.mt6{margin-top:24px}.mb2{margin-bottom:8px}
@@ -110,19 +114,19 @@ html = r"""
       <!-- LEFT -->
       <div>
         <div class="card dark">
-          <div class="section-title">Step 1: Upload Decision Matrix</div>
+          <div class="section-title step">Step 1: Upload Decision Matrix</div>
           <label for="csvFile" class="btn">📤 Choose CSV</label>
           <input id="csvFile" type="file" accept=".csv" style="display:none"/>
           <p class="hint mt2">First column is treated as <b>Alternative</b> automatically.</p>
         </div>
 
         <div id="typesCard" class="card dark" style="display:none">
-          <div class="section-title">Step 2: Define Criteria Types</div>
+          <div class="section-title step">Step 2: Define Criteria Types</div>
           <div id="typesGrid" class="row"></div>
         </div>
 
         <div id="weightsCard" class="card dark" style="display:none">
-          <div class="section-title">Step 3: Set Weights</div>
+          <div class="section-title step">Step 3: Set Weights</div>
           <div class="row mb2" style="gap:16px">
             <label><input type="radio" name="wmode" id="wEqual" checked> Equal (1/m)</label>
             <label><input type="radio" name="wmode" id="wCustom"> Custom (raw; normalized on run)</label>
@@ -131,7 +135,7 @@ html = r"""
         </div>
 
         <div id="betaCard" class="card dark" style="display:none">
-          <div class="section-title">Step 4: β (blend of D⁺ and D⁻)</div>
+          <div class="section-title step">Step 4: β (blend of D⁺ and D⁻)</div>
           <input id="beta" type="range" min="0" max="1" step="0.01" value="0.5" class="w100"/>
           <div class="hint mt2">β = <b id="betaVal">0.50</b></div>
           <button class="btn mt4" id="runBtn">Run SYAI</button>
@@ -286,11 +290,10 @@ A3,300,9,6,85
     // sanitize headers to strings
     columns = arr[0].map(c => String(c ?? "").trim());
 
-    // if any column is literally 'Alternative', move it to index 0;
-    // else rename the first column to 'Alternative' (so it’s excluded from criteria/weights)
+    // if any column is literally 'Alternative', move it to index 0; else rename the first column to 'Alternative'
     if (columns.includes("Alternative")) {
       const idx = columns.indexOf("Alternative");
-      if (idx !== 0) { const name = columns.splice(idx,1)[0]; columns.unshift(name); } // keep label but move to front
+      if (idx !== 0) { const name = columns.splice(idx,1)[0]; columns.unshift(name); }
     } else {
       columns[0] = "Alternative";
     }
