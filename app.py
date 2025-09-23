@@ -23,8 +23,8 @@ def img_data_uri_try(candidates):
     return ""
 
 # Your images live in repo root; we also try assets/ as fallback
-SCATTER_URI = img_data_uri_try(["scatter_matrix.png", "assets/scatter_matrix.png"])
-CORR_URI    = img_data_uri_try(["corr_matrix.png",   "assets/corr_matrix.png"])
+SCATTER_URI = img_data_uri_try(["scatter_matrix.png", "scatter_matrix.png"])
+CORR_URI    = img_data_uri_try(["corr_matrix.png",   "corr_matrix.png"])
 
 # Visible hints if something is missing (helps diagnose path/case issues)
 if not SCATTER_URI:
