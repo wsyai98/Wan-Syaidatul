@@ -3,7 +3,7 @@ import streamlit.components.v1 as components
 
 st.set_page_config(page_title="SYAI-Rank (Web UI)", layout="wide")
 
-# Optional: soft grey+pink vibe for the Streamlit shell behind the UI
+# Soft grey + pink shell
 st.markdown("""
 <style>
 .stApp { background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 120%) !important; }
@@ -27,7 +27,6 @@ html = r"""
     --text-dark:#1f2937;
     --pink:#ec4899; --pink-700:#db2777;
     --border-dark:#262b35; --border-light:#fbcfe8;
-    --muted:#9ca3af;
   }
   *{box-sizing:border-box} html,body{height:100%;margin:0}
   body{
@@ -65,8 +64,9 @@ html = r"""
   .mt2{margin-top:8px}.mt4{margin-top:16px}.mt6{margin-top:24px}.mb2{margin-bottom:8px}
   .w100{width:100%}
   /* charts */
-  .chart{width:100%;height:340px;border:1px dashed #2a2f38;border-radius:12px;padding:8px}
-  .linechart{width:100%;height:300px;border:1px dashed #2a2f38;border-radius:12px;padding:8px}
+  .chart,.linechart{width:100%;border:1px dashed #2a2f38;border-radius:12px;padding:8px}
+  .chart{height:340px}
+  .linechart{height:300px}
   #err{display:none;background:#7f1d1d;color:#fff;padding:10px 12px;border:1px solid #fecaca;border-radius:8px;margin-bottom:8px;white-space:pre-wrap}
 </style>
 </head>
@@ -104,8 +104,12 @@ html = r"""
         </div>
 
         <div id="weightsCard" class="card dark" style="display:none">
-          <div class="section-title">Step 3: Set Weights (raw; normalized on run)</div>
-          <div id="weightsGrid" class="row"></div>
+          <div class="section-title">Step 3: Set Weights</div>
+          <div class="row mb2">
+            <label><input type="radio" name="wmode" id="wEqual" checked> Equal (1/m)</label>
+            <label><input type="radio" name="wmode" id="wCustom"> Custom (raw; normalized on run)</label>
+          </div>
+          <div id="weightsGrid" class="row" style="display:none"></div>
         </div>
 
         <div id="betaCard" class="card dark" style="display:none">
@@ -174,33 +178,29 @@ html = r"""
 
 <script>
 (function(){
-  // ---------- helpers ----------
   const $ = (id)=> document.getElementById(id);
   const show = (el, on=true)=> { el.style.display = on ? "" : "none"; };
   const err = (msg)=>{ const e=$("err"); e.textContent="Error: "+msg; e.style.display="block"; };
 
-  // CSV parser supporting quoted fields
+  // simple CSV parser
   function parseCSVText(text){
-    const rows = [];
-    let i=0, cur="", inQuotes=false, row=[];
+    const rows = []; let i=0, cur="", inQuotes=false, row=[];
     const pushCell=()=>{ row.push(cur); cur=""; };
     const pushRow=()=>{ rows.push(row); row=[]; };
     while(i<text.length){
       const ch=text[i];
       if(inQuotes){
-        if(ch==='\"'){
-          if(text[i+1]==='\"'){ cur+='\"'; i++; } else { inQuotes=false; }
-        } else { cur+=ch; }
+        if(ch==='\"'){ if(text[i+1]==='\"'){ cur+='\"'; i++; } else { inQuotes=false; } }
+        else { cur+=ch; }
       }else{
-        if(ch==='\"'){ inQuotes=true; }
-        else if(ch===','){ pushCell(); }
+        if(ch==='\"') inQuotes=true;
+        else if(ch===',') pushCell();
         else if(ch==='\n'){ pushCell(); pushRow(); }
-        else if(ch==='\r'){ /* ignore */ }
-        else{ cur+=ch; }
+        else if(ch==='\r'){ }
+        else cur+=ch;
       }
       i++;
     }
-    // last cell
     pushCell(); if(row.length>1 || row[0] !== "") pushRow();
     return rows;
   }
@@ -214,7 +214,7 @@ A3,300,9,6,85
   $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(sampleCSV);
   $("downloadSample").download = "sample.csv";
 
-  // theme toggle (just a label flip for this embed)
+  // theme toggle label only (visual)
   let dark=true;
   $("themeToggle").onclick=()=>{ dark=!dark; $("themeToggle").textContent = dark? "🌙 Dark" : "☀️ Light"; };
 
@@ -229,9 +229,13 @@ A3,300,9,6,85
   $("upCorr").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $("imgCorr").src=r.result; show($("imgCorr"),true); }; r.readAsDataURL(f); };
 
   // state
-  let columns=[], rows=[], crits=[], types={}, ideals={}, weights={}, beta=0.5;
+  let columns=[], rows=[], crits=[], types={}, ideals={}, weights={}, beta=0.5, weightMode='equal';
 
   $("beta").oninput = ()=>{ beta = parseFloat($("beta").value); $("betaVal").textContent = beta.toFixed(2); };
+
+  // weighting mode toggle
+  $("wEqual").onchange = ()=>{ weightMode='equal'; show($("weightsGrid"),false); };
+  $("wCustom").onchange = ()=>{ weightMode='custom'; show($("weightsGrid"),true); };
 
   // upload
   $("csvFile").onchange = (e)=>{
@@ -243,34 +247,26 @@ A3,300,9,6,85
         const arr = parseCSVText(txt);
         if(!arr.length) throw new Error("Empty CSV");
         columns = arr[0];
-        const colIdx = Object.fromEntries(columns.map((c,i)=>[c,i]));
         if(columns[0] !== "Alternative"){
-          // force Alternative to be first if present elsewhere
           const altIdx = columns.indexOf("Alternative");
-          if(altIdx > 0){
-            columns.splice(altIdx,1);
-            columns.unshift("Alternative");
-          }
+          if(altIdx > 0){ columns.splice(altIdx,1); columns.unshift("Alternative"); }
         }
         crits = columns.filter(c=>c!=="Alternative");
         rows = arr.slice(1).filter(r=>r.length>=columns.length).map(r=>{
-          const obj={};
-          columns.forEach((c,i)=> obj[c]=r[i] ?? "");
-          return obj;
+          const obj={}; columns.forEach((c,i)=> obj[c]=r[i] ?? ""); return obj;
         });
 
-        // defaults for UI
-        types = Object.fromEntries(crits.map(c=>[c,"Benefit"]));
+        types  = Object.fromEntries(crits.map(c=>[c,"Benefit"]));
         ideals = Object.fromEntries(crits.map(c=>[c,""]));
-        weights = Object.fromEntries(crits.map(c=>[c,1]));
+        weights= Object.fromEntries(crits.map(c=>[c,1]));
 
-        // build UI
         renderMatrix();
         renderTypes();
         renderWeights();
         show($("matrixCard"),true);
         show($("typesCard"),true);
         show($("weightsCard"),true);
+        show($("weightsGrid"), weightMode==='custom');
         show($("betaCard"),true);
         show($("resultCard"),false);
       }catch(ex){ err(ex.message || String(ex)); }
@@ -279,8 +275,7 @@ A3,300,9,6,85
   };
 
   function renderMatrix(){
-    const tb = $("matrixTable");
-    tb.innerHTML = "";
+    const tb = $("matrixTable"); tb.innerHTML = "";
     const thead = document.createElement("thead"); const trh = document.createElement("tr");
     columns.forEach(c=>{ const th=document.createElement("th"); th.textContent=c; trh.appendChild(th); });
     thead.appendChild(trh); tb.appendChild(thead);
@@ -327,7 +322,7 @@ A3,300,9,6,85
     });
   }
 
-  // --- SYAI core in JS ---
+  // --- SYAI core ---
   const C = 0.01;
   function toNum(v){ const x=parseFloat(String(v).replace(/,/g,"")); return isFinite(x)?x:NaN; }
 
@@ -336,9 +331,7 @@ A3,300,9,6,85
     let xStar;
     if(ctype==="Benefit") xStar = max;
     else if(ctype==="Cost") xStar = min;
-    else {
-      const g=parseFloat(goal); xStar = isFinite(g)?g:(vals.reduce((s,v)=>s+(isFinite(v)?v:0),0)/vals.length);
-    }
+    else { const g=parseFloat(goal); xStar=isFinite(g)?g:(vals.reduce((s,v)=>s+(isFinite(v)?v:0),0)/vals.length); }
     if(Math.abs(R)<1e-12) return vals.map(_=>1.0);
     return vals.map(x=> Math.max(C, Math.min(1, C + (1-C)*(1-Math.abs(x-xStar)/R))));
   }
@@ -351,10 +344,16 @@ A3,300,9,6,85
       const series = X.map(row=>row[c]);
       N[c] = normalizeColumn(series, types[c], ideals[c]);
     });
-    // weights normalize
-    let sumw = 0; const w={};
-    crits.forEach(c=>{ const v=Math.max(0, parseFloat(weights[c]||0)); w[c]= isFinite(v)?v:0; sumw += w[c]; });
-    if(sumw<=0) crits.forEach(c=> w[c]=1/crits.length); else crits.forEach(c=> w[c]/=sumw);
+
+    // weights
+    const w={};
+    if(weightMode==='equal'){
+      crits.forEach(c=> w[c]=1/crits.length);
+    } else {
+      let sumw = 0;
+      crits.forEach(c=>{ const v=Math.max(0, parseFloat(weights[c]||0)); w[c]= isFinite(v)?v:0; sumw += w[c]; });
+      if(sumw<=0) crits.forEach(c=> w[c]=1/crits.length); else crits.forEach(c=> w[c]/=sumw);
+    }
 
     // weighted matrix
     const W = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, N[c][i]*w[c]])) );
@@ -366,12 +365,11 @@ A3,300,9,6,85
       Aplus[c]=mx; Aminus[c]=mn;
     });
     // distances & closeness
-    const betaVal = beta;
     const res = rows.map((r,i)=>{
       let Dp=0, Dm=0;
       crits.forEach(c=>{ Dp += Math.abs(W[i][c]-Aplus[c]); Dm += Math.abs(W[i][c]-Aminus[c]); });
-      const denom = betaVal*Dp + (1-betaVal)*Dm || Number.EPSILON;
-      const Close = ((1-betaVal)*Dm)/denom;
+      const denom = beta*Dp + (1-beta)*Dm || Number.EPSILON;
+      const Close = ((1-beta)*Dm)/denom;
       return { Alternative: String(r["Alternative"]), Dp, Dm, Close };
     });
     res.sort((a,b)=> b.Close - a.Close);
@@ -381,7 +379,8 @@ A3,300,9,6,85
 
   $("runBtn").onclick = ()=>{
     const result = compute(); if(!result) return;
-    // table
+
+    // result table
     const tb = $("resultTable"); tb.innerHTML="";
     const thead=document.createElement("thead"); const trh=document.createElement("tr");
     ["Alternative","D+","D-","Closeness","Rank"].forEach(h=>{ const th=document.createElement("th"); th.textContent=h; trh.appendChild(th); });
@@ -389,8 +388,9 @@ A3,300,9,6,85
     const tbody=document.createElement("tbody");
     result.forEach(r=>{
       const tr=document.createElement("tr");
-      const cells=[r.Alternative, r.Dp.toFixed(6), r.Dm.toFixed(6), r.Close.toFixed(6), r.Rank];
-      cells.forEach(v=>{ const td=document.createElement("td"); td.textContent=String(v); tr.appendChild(td); });
+      [r.Alternative, r.Dp.toFixed(6), r.Dm.toFixed(6), r.Close.toFixed(6), r.Rank].forEach(v=>{
+        const td=document.createElement("td"); td.textContent=String(v); tr.appendChild(td);
+      });
       tbody.appendChild(tr);
     });
     tb.appendChild(tbody);
@@ -400,38 +400,17 @@ A3,300,9,6,85
     drawLine(result.map(r=>({rank:r.Rank, value:r.Close, name:r.Alternative})));
   };
 
-  // ------- Simple SVG Charts (neutral palette) -------
-  const NEUTRAL = ["#64748b","#94a3b8","#cbd5e1","#475569","#334155","#1f2937","#9ca3af","#6b7280","#a3a3a3","#737373"];
+  // ------- SVG Charts -------
+  // Pastel palette for bars
+  const PASTELS = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"];
 
   function drawBar(data){
     const svg = $("barSVG"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const rect = svg.getBoundingClientRect(); const W = rect.width||800, H = rect.height||300, padL=50,padR=20,padT=10,padB=40;
     const max = Math.max(...data.map(d=>d.value)) || 1;
     const barW = (W - padL - padR) / data.length * 0.8;
-    data.forEach((d,i)=>{
-      const x = padL + i*(W - padL - padR)/data.length + ((W - padL - padR)/data.length - barW)/2;
-      const h = (H - padT - padB) * (d.value/max);
-      const y = H - padB - h;
-      const rectEl = document.createElementNS("http://www.w3.org/2000/svg","rect");
-      rectEl.setAttribute("x", x); rectEl.setAttribute("y", y);
-      rectEl.setAttribute("width", barW); rectEl.setAttribute("height", h);
-      rectEl.setAttribute("fill", NEUTRAL[i%NEUTRAL.length]);
-      svg.appendChild(rectEl);
 
-      const txt = document.createElementNS("http://www.w3.org/2000/svg","text");
-      txt.setAttribute("x", x + barW/2); txt.setAttribute("y", y - 4);
-      txt.setAttribute("text-anchor","middle"); txt.setAttribute("font-size","12");
-      txt.setAttribute("fill","#e5e7eb"); txt.textContent = (d.value).toFixed(3);
-      svg.appendChild(txt);
-
-      const lbl = document.createElementNS("http://www.w3.org/2000/svg","text");
-      lbl.setAttribute("x", x + barW/2); lbl.setAttribute("y", H - 10);
-      lbl.setAttribute("text-anchor","middle"); lbl.setAttribute("font-size","12");
-      lbl.setAttribute("fill","#e5e7eb"); lbl.textContent = d.name;
-      svg.appendChild(lbl);
-    });
-
-    // y-axis ticks
+    // y grid + ticks (black labels)
     for(let t=0;t<=5;t++){
       const val = max*t/5;
       const y = H - padB - (H - padT - padB)*(val/max);
@@ -443,9 +422,32 @@ A3,300,9,6,85
       const tEl = document.createElementNS("http://www.w3.org/2000/svg","text");
       tEl.setAttribute("x", padL-10); tEl.setAttribute("y", y+4);
       tEl.setAttribute("text-anchor","end"); tEl.setAttribute("font-size","12");
-      tEl.setAttribute("fill","#e5e7eb"); tEl.textContent = val.toFixed(2);
+      tEl.setAttribute("fill","#111"); tEl.textContent = val.toFixed(2);
       svg.appendChild(tEl);
     }
+
+    data.forEach((d,i)=>{
+      const x = padL + i*(W - padL - padR)/data.length + ((W - padL - padR)/data.length - barW)/2;
+      const h = (H - padT - padB) * (d.value/max);
+      const y = H - padB - h;
+      const rectEl = document.createElementNS("http://www.w3.org/2000/svg","rect");
+      rectEl.setAttribute("x", x); rectEl.setAttribute("y", y);
+      rectEl.setAttribute("width", barW); rectEl.setAttribute("height", h);
+      rectEl.setAttribute("fill", PASTELS[i%PASTELS.length]);
+      svg.appendChild(rectEl);
+
+      const txt = document.createElementNS("http://www.w3.org/2000/svg","text");
+      txt.setAttribute("x", x + barW/2); txt.setAttribute("y", y - 4);
+      txt.setAttribute("text-anchor","middle"); txt.setAttribute("font-size","12");
+      txt.setAttribute("fill","#111"); txt.textContent = (d.value).toFixed(3);
+      svg.appendChild(txt);
+
+      const lbl = document.createElementNS("http://www.w3.org/2000/svg","text");
+      lbl.setAttribute("x", x + barW/2); lbl.setAttribute("y", H - 10);
+      lbl.setAttribute("text-anchor","middle"); lbl.setAttribute("font-size","12");
+      lbl.setAttribute("fill","#111"); lbl.textContent = d.name;
+      svg.appendChild(lbl);
+    });
   }
 
   function drawLine(data){
@@ -456,7 +458,7 @@ A3,300,9,6,85
     const scaleX = (r)=> padL + (W-padL-padR) * ( (r-minX) / (maxX-minX||1) );
     const scaleY = (v)=> H - padB - (H-padT-padB) * (v/maxY);
 
-    // grid
+    // grid + ticks (black)
     for(let t=0;t<=5;t++){
       const val = maxY*t/5;
       const y = H - padB - (H - padT - padB)*(val/maxY);
@@ -468,11 +470,10 @@ A3,300,9,6,85
       const tEl = document.createElementNS("http://www.w3.org/2000/svg","text");
       tEl.setAttribute("x", padL-10); tEl.setAttribute("y", y+4);
       tEl.setAttribute("text-anchor","end"); tEl.setAttribute("font-size","12");
-      tEl.setAttribute("fill","#e5e7eb"); tEl.textContent = val.toFixed(2);
+      tEl.setAttribute("fill","#111"); tEl.textContent = val.toFixed(2);
       svg.appendChild(tEl);
     }
 
-    // path
     const path = document.createElementNS("http://www.w3.org/2000/svg","path");
     let d = "";
     data.sort((a,b)=> a.rank - b.rank).forEach((p,idx)=>{
@@ -485,22 +486,22 @@ A3,300,9,6,85
     path.setAttribute("stroke-width","2");
     svg.appendChild(path);
 
-    // points + labels
+    // points + labels (black)
     data.forEach((p)=>{
       const x=scaleX(p.rank), y=scaleY(p.value);
       const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
       c.setAttribute("cx",x); c.setAttribute("cy",y); c.setAttribute("r","4"); c.setAttribute("fill","#94a3b8");
       svg.appendChild(c);
       const t = document.createElementNS("http://www.w3.org/2000/svg","text");
-      t.setAttribute("x",x+6); t.setAttribute("y",y-6); t.setAttribute("font-size","12"); t.setAttribute("fill","#e5e7eb");
+      t.setAttribute("x",x+6); t.setAttribute("y",y-6); t.setAttribute("font-size","12"); t.setAttribute("fill","#111");
       t.textContent = p.value.toFixed(3); svg.appendChild(t);
     });
 
-    // x labels
+    // x labels (black)
     for(let r=1;r<=maxX;r++){
       const x=scaleX(r);
       const t = document.createElementNS("http://www.w3.org/2000/svg","text");
-      t.setAttribute("x",x); t.setAttribute("y",H-8); t.setAttribute("text-anchor","middle"); t.setAttribute("font-size","12"); t.setAttribute("fill","#e5e7eb");
+      t.setAttribute("x",x); t.setAttribute("y",H-8); t.setAttribute("text-anchor","middle"); t.setAttribute("font-size","12"); t.setAttribute("fill","#111");
       t.textContent = r; svg.appendChild(t);
     }
   }
