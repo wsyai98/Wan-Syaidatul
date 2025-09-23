@@ -1,6 +1,4 @@
 import base64
-import os
-from glob import glob
 from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
@@ -10,44 +8,31 @@ st.set_page_config(page_title="SYAI-Rank (Web UI)", layout="wide")
 # ---------- Robust image loader ----------
 APP_DIR = Path(__file__).resolve().parent
 
-def img_data_uri_try(candidates: list[str]) -> tuple[str, bool, str]:
+def img_data_uri_try(candidates: list[str]) -> tuple[str, bool]:
     """
     Try multiple candidate paths (relative to app.py unless absolute).
-    Returns: (data_uri_or_empty, found_bool, resolved_path_if_found_or_tried_message)
+    Returns: (data_uri_or_empty, found_bool)
     """
-    tried = []
     for name in candidates:
         p = Path(name)
         if not p.is_absolute():
             p = APP_DIR / name
-        tried.append(str(p))
         if p.exists() and p.is_file():
             ext = p.suffix.lower()
             mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
             b64 = base64.b64encode(p.read_bytes()).decode("utf-8")
-            return (f"data:{mime};base64,{b64}", True, str(p))
-    return ("", False, " | ".join(tried))
+            return (f"data:{mime};base64,{b64}", True)
+    return ("", False)
 
 # Try repo root first, then assets/
-SCATTER_URI, SCATTER_FOUND, SCATTER_PATH_INFO = img_data_uri_try(
+SCATTER_URI, SCATTER_FOUND = img_data_uri_try(
     ["scatter_matrix.png", "assets/scatter_matrix.png"]
 )
-CORR_URI, CORR_FOUND, CORR_PATH_INFO = img_data_uri_try(
+CORR_URI, CORR_FOUND = img_data_uri_try(
     ["corr_matrix.png", "assets/corr_matrix.png"]
 )
 
-# Optional diagnostics to verify what the app sees
-with st.expander("Diagnostics (collapse me)"):
-    st.write("App directory:", str(APP_DIR))
-    st.write("Files here:", sorted([os.path.basename(x) for x in glob(str(APP_DIR / "*"))]))
-    st.write("Looked for scatter at:", SCATTER_PATH_INFO, "| Found?", SCATTER_FOUND)
-    st.write("Looked for corr at:", CORR_PATH_INFO, "| Found?", CORR_FOUND)
-    if not SCATTER_FOUND:
-        st.warning("`scatter_matrix.png` not found in ./ or ./assets/.")
-    if not CORR_FOUND:
-        st.warning("`corr_matrix.png` not found in ./ or ./assets/.")
-
-# Nice background
+# Soft background polish
 st.markdown("""
 <style>
 .stApp { background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 120%) !important; }
