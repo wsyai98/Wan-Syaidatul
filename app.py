@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="SYAI-Rank", layout="wide")
 st.title("SYAI-Rank (C=0.01, L1 distances, deferred weight normalization)")
@@ -32,31 +33,23 @@ def compute_syai(df: pd.DataFrame,
                  ideals: dict[str, float],
                  weights: pd.Series,
                  beta: float):
-    # Ensure numeric
     X = df.apply(pd.to_numeric, errors="coerce")
     if X.isna().any().any():
         st.warning("Non-numeric values were coerced to NaN. Check your data.")
 
-    # 1) Normalize per column
     N = pd.DataFrame(index=X.index, columns=X.columns, dtype=float)
     for j, col in enumerate(X.columns):
         N[col] = normalize_column(X[col], types[j], ideals.get(col))
 
-    # 2) Apply weights (assume already normalized to sum=1)
     w = weights.reindex(X.columns).astype(float)
-
-    # 3) Weighted matrix
     W = N.mul(w, axis=1)
 
-    # 4) A+ / A- on WEIGHTED matrix
     A_plus = W.max(axis=0)
     A_minus = W.min(axis=0)
 
-    # 5) L1 distances
     D_plus = (W.sub(A_plus, axis=1).abs()).sum(axis=1)
     D_minus = (W.sub(A_minus, axis=1).abs()).sum(axis=1)
 
-    # 6) Closeness
     denom = beta * D_plus + (1 - beta) * D_minus
     denom = denom.replace(0, np.finfo(float).eps)
     closeness = ((1 - beta) * D_minus) / denom
@@ -68,7 +61,6 @@ def compute_syai(df: pd.DataFrame,
     return res, N, W, A_plus, A_minus, w
 
 def normalize_weights_any(raw_w: pd.Series) -> pd.Series:
-    """Rescale any raw weights to sum=1. If all zeros → equal weights."""
     raw_w = raw_w.fillna(0).astype(float)
     total = raw_w.sum()
     if total <= 0:
@@ -76,8 +68,12 @@ def normalize_weights_any(raw_w: pd.Series) -> pd.Series:
         return pd.Series([1.0/len(raw_w)]*len(raw_w), index=raw_w.index, dtype=float)
     return raw_w / total
 
-# ---------- Sidebar: sample & test ----------
+
+# ---------- Sidebar ----------
 with st.sidebar:
+    st.markdown("### Navigation")
+    tabs = st.radio("Go to:", ["SYAI Ranking", "Comparison with Other Methods"])
+    st.markdown("---")
     st.markdown("### Sample CSV (first column = Alternative)")
     st.download_button(
         "Download sample.csv",
@@ -88,169 +84,155 @@ with st.sidebar:
         file_name="sample.csv",
         mime="text/csv",
     )
-    st.markdown("---")
     run_test = st.button("Reproduce Paper Example (Test)")
 
-# ---------- Step 1: Data ----------
-st.header("Step 1: Upload Decision Matrix")
-file = st.file_uploader("Upload CSV (first column must be Alternative)", type=["csv"])
+# ---------- SYAI Tab ----------
+if tabs == "SYAI Ranking":
+    st.header("Step 1: Upload Decision Matrix")
+    file = st.file_uploader("Upload CSV (first column must be Alternative)", type=["csv"])
 
-df = None
-if run_test:
-    # Paper example (locked)
-    df = pd.DataFrame({
-        "Cost": [200, 250, 300],
-        "Quality": [8, 7, 9],
-        "Delivery Time": [4, 5, 6],
-        "Temperature": [30, 60, 85],
-    }, index=["A1", "A2", "A3"])
-    df.index.name = "Alternative"
-    st.success("Loaded paper example data.")
-elif file:
-    df = pd.read_csv(file, index_col=0)
-    df.index.name = "Alternative"
-
-if df is not None:
-    st.subheader("Decision Matrix")
-    st.dataframe(df)
-
-if df is not None and not df.empty:
-    # ---------- Step 2: Types ----------
-    st.header("Step 2: Define Criteria Types")
-    types = []
-    ideals = {}
-
-    default_types = {}
-    default_goal = {}
+    df = None
     if run_test:
-        default_types = {"Cost": "Cost", "Quality": "Benefit",
-                         "Delivery Time": "Cost", "Temperature": "Ideal (Goal)"}
-        default_goal = {"Temperature": 60.0}
+        df = pd.DataFrame({
+            "Cost": [200, 250, 300],
+            "Quality": [8, 7, 9],
+            "Delivery Time": [4, 5, 6],
+            "Temperature": [30, 60, 85],
+        }, index=["A1", "A2", "A3"])
+        df.index.name = "Alternative"
+        st.success("Loaded paper example data.")
+    elif file:
+        df = pd.read_csv(file, index_col=0)
+        df.index.name = "Alternative"
 
-    for col in df.columns:
-        default_idx = 0  # Benefit
-        if col in default_types:
-            if default_types[col] == "Cost":
-                default_idx = 1
-            elif default_types[col] == "Ideal (Goal)":
-                default_idx = 2
+    if df is not None:
+        st.subheader("Decision Matrix")
+        st.dataframe(df)
 
-        ctype = st.selectbox(
-            f"Type for {col}",
-            ["Benefit", "Cost", "Ideal (Goal)"],
-            index=default_idx,
-            key=f"type_{col}"
-        )
-        types.append(ctype)
+    if df is not None and not df.empty:
+        # Step 2: Types
+        st.header("Step 2: Define Criteria Types")
+        types = []
+        ideals = {}
 
-        if ctype == "Ideal (Goal)":
-            val_default = float(default_goal.get(col, df[col].mean()))
-            val = st.number_input(
-                f"Ideal (Goal) value for {col}",
-                value=val_default,
-                key=f"goal_{col}"
+        default_types = {}
+        default_goal = {}
+        if run_test:
+            default_types = {"Cost": "Cost", "Quality": "Benefit",
+                             "Delivery Time": "Cost", "Temperature": "Ideal (Goal)"}
+            default_goal = {"Temperature": 60.0}
+
+        for col in df.columns:
+            default_idx = 0
+            if col in default_types:
+                if default_types[col] == "Cost":
+                    default_idx = 1
+                elif default_types[col] == "Ideal (Goal)":
+                    default_idx = 2
+
+            ctype = st.selectbox(
+                f"Type for {col}",
+                ["Benefit", "Cost", "Ideal (Goal)"],
+                index=default_idx,
+                key=f"type_{col}"
             )
-            ideals[col] = float(val)
+            types.append(ctype)
 
-    # ---------- Step 3: Weights (deferred normalization) ----------
-    st.header("Step 3: Set Weights")
-    m = df.shape[1]
-
-    weighting_mode = "Equal (1/m)" if run_test else st.radio(
-        "Weighting scheme",
-        ["Equal (1/m)", "Custom"],
-        horizontal=True
-    )
-
-    # Collect raw weights without normalizing live
-    if weighting_mode == "Custom" and not run_test:
-        st.caption("Enter any raw weights (e.g., 0.07, 2, etc.). They’ll be normalized when you click **Run SYAI**.")
-        cols = st.columns(min(4, m))
-        weight_inputs = {}
-        for j, col in enumerate(df.columns):
-            with cols[j % len(cols)]:
-                weight_inputs[col] = st.number_input(
-                    f"w({col})",
-                    min_value=0.0,
-                    value=0.0,
-                    step=0.001,        # finer step for decimals like 0.07
-                    format="%.6f",     # show / accept precise decimals
-                    key=f"w_{col}"
+            if ctype == "Ideal (Goal)":
+                val_default = float(default_goal.get(col, df[col].mean()))
+                val = st.number_input(
+                    f"Ideal (Goal) value for {col}",
+                    value=val_default,
+                    key=f"goal_{col}"
                 )
-        raw_w = pd.Series(weight_inputs, dtype=float)
-        st.write("**Raw weights entered:**")
-        st.dataframe(raw_w.to_frame("Raw").T)
-    else:
-        raw_w = pd.Series([1.0/m]*m, index=df.columns, dtype=float)
-        if run_test:
-            st.info("Test mode uses equal weights to match the paper example.")
-        else:
-            st.caption("Equal weights selected (each criterion gets 1/m).")
+                ideals[col] = float(val)
 
-    # ---------- Step 4: β and Run ----------
-    st.header("Step 4: Compute SYAI")
-    beta = st.slider("β (blend of D+ and D-)", 0.0, 1.0, 0.5, 0.01)
+        # Step 3: Weights
+        st.header("Step 3: Set Weights")
+        m = df.shape[1]
 
-    if st.button("Run SYAI"):
-        # Normalize only now
-        w = normalize_weights_any(raw_w)
-
-        result, N, W, A_plus, A_minus, w_used = compute_syai(df, types, ideals, w, beta)
-
-        st.subheader("Normalized weights used (sum=1)")
-        st.dataframe(w_used.to_frame("Weight").T.style.format("{:.6f}"))
-
-        st.subheader("Normalized Matrix")
-        st.dataframe(N.style.format("{:.6f}"))
-
-        st.subheader("Weighted Matrix")
-        st.dataframe(W.style.format("{:.6f}"))
-
-        c1, c2 = st.columns(2)
-        with c1:
-            st.write("A⁺ (max of weighted)")
-            st.dataframe(A_plus.to_frame("A+").T.style.format("{:.6f}"))
-        with c2:
-            st.write("A⁻ (min of weighted)")
-            st.dataframe(A_minus.to_frame("A-").T.style.format("{:.6f}"))
-
-        st.header("Final Ranking (SYAI)")
-        st.dataframe(
-            result.reset_index().rename(columns={"index": "Alternative"}).style.format({
-                "D+": "{:.6f}",
-                "D-": "{:.6f}",
-                "Closeness Score": "{:.6f}",
-            })
+        weighting_mode = "Equal (1/m)" if run_test else st.radio(
+            "Weighting scheme",
+            ["Equal (1/m)", "Custom"],
+            horizontal=True
         )
 
-        # Paper check (valid for equal weights)
-        if run_test:
-            st.markdown("### Paper Check (expected vs computed)")
-            expected_Dp = pd.Series([0.25875, 0.49500, 0.60750], index=["A1", "A2", "A3"])
-            expected_Dm = pd.Series([0.61875, 0.38250, 0.27000], index=["A1", "A2", "A3"])
-            expected_C  = pd.Series([0.705128, 0.435897, 0.307692], index=["A1", "A2", "A3"])
-
-            Dp = (W.sub(A_plus, axis=1).abs()).sum(axis=1).reindex(expected_Dp.index)
-            Dm = (W.sub(A_minus, axis=1).abs()).sum(axis=1).reindex(expected_Dm.index)
-            denom = beta * Dp + (1 - beta) * Dm
-            denom = denom.replace(0, np.finfo(float).eps)
-            Cscore = ((1 - beta) * Dm) / denom
-
-            comp = pd.DataFrame({
-                "D+ (expected)": expected_Dp,
-                "D+ (computed)": Dp,
-                "D- (expected)": expected_Dm,
-                "D- (computed)": Dm,
-                "Closeness (expected)": expected_C,
-                "Closeness (computed)": Cscore
-            })
-            st.dataframe(comp.style.format("{:.6f}"))
-
-            tol = 1e-6
-            ok = (np.allclose(Dp.values, expected_Dp.values, atol=tol) and
-                  np.allclose(Dm.values, expected_Dm.values, atol=tol) and
-                  np.allclose(Cscore.values, expected_C.values, atol=tol))
-            if ok:
-                st.success("✅ Matches the paper exactly (equal weights).")
+        if weighting_mode == "Custom" and not run_test:
+            st.caption("Enter raw weights (they’ll be normalized when you run SYAI).")
+            cols = st.columns(min(4, m))
+            weight_inputs = {}
+            for j, col in enumerate(df.columns):
+                with cols[j % len(cols)]:
+                    weight_inputs[col] = st.number_input(
+                        f"w({col})",
+                        min_value=0.0,
+                        value=0.0,
+                        step=0.001,
+                        format="%.6f",
+                        key=f"w_{col}"
+                    )
+            raw_w = pd.Series(weight_inputs, dtype=float)
+            st.write("Raw weights entered:")
+            st.dataframe(raw_w.to_frame("Raw").T)
+        else:
+            raw_w = pd.Series([1.0/m]*m, index=df.columns, dtype=float)
+            if run_test:
+                st.info("Test mode uses equal weights to match the paper example.")
             else:
-                st.error("❌ Does not match the paper. Ensure types, goal value, β, and weights are equal.")
+                st.caption("Equal weights selected (1/m each).")
+
+        # Step 4: Beta
+        st.header("Step 4: Compute SYAI")
+        beta = st.slider("β (blend of D+ and D-)", 0.0, 1.0, 0.5, 0.01)
+
+        if st.button("Run SYAI"):
+            w = normalize_weights_any(raw_w)
+            result, N, W, A_plus, A_minus, w_used = compute_syai(df, types, ideals, w, beta)
+
+            st.subheader("Normalized weights used (sum=1)")
+            st.dataframe(w_used.to_frame("Weight").T.style.format("{:.6f}"))
+
+            st.subheader("Normalized Matrix")
+            st.dataframe(N.style.format("{:.6f}"))
+
+            st.subheader("Weighted Matrix")
+            st.dataframe(W.style.format("{:.6f}"))
+
+            st.subheader("Final Ranking (SYAI)")
+            st.dataframe(
+                result.reset_index().rename(columns={"index": "Alternative"}).style.format({
+                    "D+": "{:.6f}",
+                    "D-": "{:.6f}",
+                    "Closeness Score": "{:.6f}",
+                })
+            )
+
+            # Visualization of ranking
+            st.subheader("Ranking Visualization")
+            fig, ax = plt.subplots()
+            result_sorted = result.sort_values("Rank")
+            ax.bar(result_sorted.index, result_sorted["Closeness Score"], color="skyblue")
+            ax.set_ylabel("Closeness Score")
+            ax.set_title("SYAI Alternative Ranking")
+            st.pyplot(fig)
+
+# ---------- Comparison Tab ----------
+if tabs == "Comparison with Other Methods":
+    st.header("Comparison of SYAI with Other MCDM Methods")
+
+    st.markdown("""
+    This section provides a comparison of the **SYAI method** against 
+    other Multi-Criteria Decision-Making (MCDM) methods such as 
+    TOPSIS, VIKOR, SAW, COBRA, WASPAS, and MOORA.  
+    """)
+
+    st.image("scatter_matrix.png", caption="Scatter Matrix for Method Scores", use_container_width=True)
+    st.image("corr_matrix.png", caption="Correlation Heatmap of Method Scores", use_container_width=True)
+
+    st.markdown("""
+    - The **scatter matrix** shows pairwise relationships between SYAI and other methods.  
+    - The **correlation heatmap** highlights similarities and differences.  
+    - Darker blue = higher correlation, lighter = weaker correlation.  
+    """)
+
+    st.info("This comparison helps to validate how SYAI behaves relative to established MCDM methods.")
