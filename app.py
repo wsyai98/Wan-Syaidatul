@@ -217,6 +217,8 @@ if tabs == "Comparison with Other Methods":
     # Expect PNGs in the same folder as app.py
     scatter_path = Path("scatter_matrix.png")
     corr_path = Path("corr_matrix.png")
+st.image("scatter_matrix.png", caption="Scatter Matrix", use_container_width=True)
+st.image("corr_matrix.png", caption="Correlation Heatmap", use_container_width=True)
 
     if scatter_path.exists():
         st.image(str(scatter_path), caption="Scatter Matrix for Method Scores", use_container_width=True)
