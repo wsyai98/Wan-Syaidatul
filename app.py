@@ -1,9 +1,22 @@
+import base64
 import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="SYAI-Rank (Web UI)", layout="wide")
 
-# soft background for the Streamlit shell behind the embed
+# ---------- helpers to embed local images as data URIs ----------
+def img_data_uri(path: str) -> str:
+    try:
+        with open(path, "rb") as f:
+            return "data:image/png;base64," + base64.b64encode(f.read()).decode("utf-8")
+    except Exception:
+        return ""
+
+# Images are in the repo root
+SCATTER_URI = img_data_uri("scatter_matrix.png")
+CORR_URI    = img_data_uri("corr_matrix.png")
+
+# Soft background in the Streamlit shell behind the embed
 st.markdown("""
 <style>
 .stApp { background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 120%) !important; }
@@ -11,6 +24,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ---------- MAIN EMBED ----------
 html = r"""
 <!doctype html>
 <html lang="en">
@@ -23,7 +37,7 @@ html = r"""
     --bg-dark:#0b0b0f; --bg-light:#f8fafc;
     --grad-light:#ffe4e6;
     --card-dark:#0f1115cc; --card-light:#ffffffcc;
-    --text-light:#f5f5f5; --text-dark:#1f2937;
+    --text-light:#f5f5f5;
     --pink:#ec4899; --pink-700:#db2777;
     --border-dark:#262b35; --border-light:#fbcfe8;
   }
@@ -31,17 +45,17 @@ html = r"""
   body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Cantarell,"Noto Sans","Helvetica Neue",Arial}
   body.theme-dark{
     color:var(--text-light);
-    background:linear-gradient(180deg,var(--bg-dark) 0%,var(--bg-dark) 35%,var(--grad-light) 120%);
+    background:linear-gradient(180deg,#0b0b0f 0%,#0b0b0f 35%,var(--grad-light) 120%);
   }
   body.theme-light{
     color:#111;
-    background:linear-gradient(180deg,var(--bg-light) 0%,var(--bg-light) 40%,var(--grad-light) 120%);
+    background:linear-gradient(180deg,#f8fafc 0%,#f8fafc 40%,var(--grad-light) 120%);
   }
 
   .container{max-width:1200px;margin:24px auto;padding:0 16px}
   .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
   .title{font-weight:800;font-size:28px;color:#fce7f3}
-  body.theme-light .title{color:#000 !important;} /* make title black in Light */
+  body.theme-light .title{color:#000 !important;}
 
   .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
   .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid var(--pink-700);background:var(--pink);color:#fff;cursor:pointer}
@@ -62,8 +76,7 @@ html = r"""
   body.theme-light .card.dark{background:#fff;color:#111;border-color:#e5e7eb}
 
   .section-title{font-weight:700;font-size:18px;margin-bottom:12px;color:#f9a8d4}
-  /* keep Step 1–4 headings pink in both themes */
-  .section-title.step{color:#f9a8d4 !important;}
+  .section-title.step{color:#f9a8d4 !important;} /* keep steps pink */
   .label{display:block;font-size:12px;opacity:.85;margin-bottom:4px}
 
   input[type="text"],input[type="number"],select{
@@ -72,7 +85,7 @@ html = r"""
   .hint{font-size:12px;opacity:.8}
 
   .table-wrap{overflow:auto;max-height:360px}
-  table{width:100%;border-collapse:collapse;font-size:14px;color:#000} /* force black text in tables */
+  table{width:100%;border-collapse:collapse;font-size:14px;color:#000}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e5e7eb}
 
   .mt2{margin-top:8px}.mt4{margin-top:16px}.mt6{margin-top:24px}.mb2{margin-bottom:8px}
@@ -82,18 +95,18 @@ html = r"""
   .chart{height:360px}
   .linechart{height:300px}
 
-  #tooltip{
-    position:fixed;display:none;padding:6px 8px;border-radius:8px;background:#fff;color:#111;
-    border:1px solid #e5e7eb;box-shadow:0 12px 24px rgba(0,0,0,.18);font-size:12px;pointer-events:none;z-index:99999
-  }
-
-  #err{display:none;background:#7f1d1d;color:#fff;padding:10px 12px;border:1px solid #fecaca;border-radius:8px;margin-bottom:8px;white-space:pre-wrap}
+  /* Comparison view layout */
+  .cmp-row{display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:start;margin-top:16px}
+  .cmp-panel{background:var(--card-light);color:#000;border-radius:16px;padding:16px;border:1px solid var(--border-light)}
+  .cmp-panel.dark{background:var(--card-dark);color:#e5e7eb;border-color:var(--border-dark)}
+  body.theme-light .cmp-panel.dark{background:#fff;color:#111;border-color:#e5e7eb}
+  .cmp-img{width:100%;height:auto;max-height:720px;border-radius:12px;border:1px solid #2a2f38;object-fit:contain;background:#0b0b0f}
+  .cmp-caption{font-size:13px;opacity:.8;margin-top:6px}
 </style>
 </head>
 <body class="theme-dark">
 <div class="container">
-  <div id="tooltip"></div>
-  <div id="err"></div>
+  <div id="err" style="display:none;background:#7f1d1d;color:#fff;padding:10px 12px;border:1px solid #fecaca;border-radius:8px;margin-bottom:8px"></div>
 
   <div class="header">
     <div class="title">SYAI-Rank</div>
@@ -167,31 +180,37 @@ html = r"""
     </div>
   </div>
 
-  <!-- COMPARISON -->
+  <!-- ==================== COMPARISON (images are built-in) ==================== -->
   <div id="viewCompare" style="display:none">
-    <div class="grid">
-      <div class="card dark">
-        <div class="section-title">Load Images (URLs or Upload)</div>
-        <div class="label">Scatter matrix image URL (raw GitHub/public)</div>
-        <input id="urlScatter" type="text" placeholder="https://..." />
-        <img id="imgScatter" class="mt2" style="display:none;width:100%;border-radius:12px;border:1px solid #2a2f38"/>
-        <div class="label mt2">Correlation heatmap image URL (raw GitHub/public)</div>
-        <input id="urlCorr" type="text" placeholder="https://..." />
-        <img id="imgCorr" class="mt2" style="display:none;width:100%;border-radius:12px;border:1px solid #2a2f38"/>
-        <p class="hint mt2">Use direct links that end with .png/.jpg (GitHub: “Download raw file”).</p>
-        <div class="mt4">
-          <div class="label">Or upload images</div>
-          <input id="upScatter" type="file" accept=".png,.jpg,.jpeg"/>
-          <input id="upCorr" class="mt2" type="file" accept=".png,.jpg,.jpeg"/>
-        </div>
+    <!-- Scatter matrix -->
+    <div class="cmp-row">
+      <div class="cmp-panel">
+        <div class="section-title">Scatter Matrix (Large)</div>
+        <img id="bigScatter" class="cmp-img" style="display:none"/>
+        <div class="cmp-caption">Pairwise relationships of scores across methods. Each dot represents one alternative.</div>
       </div>
-
-      <div class="card">
-        <div class="section-title">How to read the figures</div>
+      <div class="cmp-panel dark">
+        <div class="section-title">How to read the scatter matrix</div>
         <ul>
-          <li><b>Scatter matrix</b> shows pairwise score relationships (each dot = one alternative).</li>
-          <li><b>Correlation heatmap</b> highlights similarity of scores/rankings across methods (darker = stronger agreement).</li>
-          <li>Use these to validate whether SYAI trends align with or diverge from other methods.</li>
+          <li><b>Diagonal</b> panels show per-method distributions (when included).</li>
+          <li><b>Off-diagonal</b> panels: closer to a line ⇒ stronger agreement between two methods.</li>
+          <li>Use to check whether <b>SYAI</b> trends with TOPSIS, VIKOR, SAW, etc., or diverges.</li>
+        </ul>
+      </div>
+    </div>
+    <!-- Correlation heatmap -->
+    <div class="cmp-row">
+      <div class="cmp-panel">
+        <div class="section-title">Correlation Heatmap (Large)</div>
+        <img id="bigCorr" class="cmp-img" style="display:none"/>
+        <div class="cmp-caption">Pairwise correlation between method scores/rankings (darker = stronger agreement).</div>
+      </div>
+      <div class="cmp-panel dark">
+        <div class="section-title">How to read the heatmap</div>
+        <ul>
+          <li>Darker cells indicate <b>stronger similarity</b> between two methods.</li>
+          <li>High correlation with <b>SYAI</b> suggests similar decision tendencies.</li>
+          <li>Low/negative correlation can reveal <b>methodological differences</b>.</li>
         </ul>
       </div>
     </div>
@@ -204,41 +223,27 @@ html = r"""
   const show = (el, on=true)=> { el.style.display = on ? "" : "none"; };
   const err = (msg)=>{ const e=$("err"); e.textContent="Error: "+msg; e.style.display="block"; };
 
-  // THEME
+  // theme
   let dark=true;
-  const applyTheme = ()=> {
+  function applyTheme(){
     document.body.classList.toggle('theme-dark', dark);
     document.body.classList.toggle('theme-light', !dark);
     $("themeToggle").textContent = dark ? "🌙 Dark" : "☀️ Light";
-  };
-  $("themeToggle").onclick=()=>{ dark=!dark; applyTheme(); };
+  }
+  $("themeToggle").onclick = ()=>{ dark=!dark; applyTheme(); };
   applyTheme();
 
-  // TOOLTIP
-  const tooltip = document.createElement("div");
-  tooltip.id = "tooltip";
-  tooltip.style.position = "fixed";
-  tooltip.style.display = "none";
-  tooltip.style.padding = "6px 8px";
-  tooltip.style.borderRadius = "8px";
-  tooltip.style.background = "#fff";
-  tooltip.style.color = "#111";
-  tooltip.style.border = "1px solid #e5e7eb";
-  tooltip.style.boxShadow = "0 12px 24px rgba(0,0,0,.18)";
-  tooltip.style.fontSize = "12px";
-  tooltip.style.pointerEvents = "none";
-  tooltip.style.zIndex = "99999";
-  document.body.appendChild(tooltip);
+  // tabs
+  $("tabRank").onclick=()=>{ $("tabRank").classList.add("active"); $("tabCompare").classList.remove("active"); show($("viewRank"),true); show($("viewCompare"),false); };
+  $("tabCompare").onclick=()=>{ $("tabCompare").classList.add("active"); $("tabRank").classList.remove("active"); show($("viewRank"),false); show($("viewCompare"),true); };
 
-  function showTip(html, x, y){
-    tooltip.innerHTML = html;
-    tooltip.style.left = (x + 12) + "px";
-    tooltip.style.top  = (y + 12) + "px";
-    tooltip.style.display = "block";
-  }
-  function hideTip(){ tooltip.style.display = "none"; }
+  // load built-in images (data URIs injected by Python)
+  const SCATTER_URI = "SCATTER_DATA_URI";
+  const CORR_URI    = "CORR_DATA_URI";
+  if(SCATTER_URI && SCATTER_URI !== "SCATTER_DATA_URI"){ const img=$("bigScatter"); img.src=SCATTER_URI; img.style.display=""; }
+  if(CORR_URI    && CORR_URI    !== "CORR_DATA_URI"){   const img=$("bigCorr");    img.src=CORR_URI;    img.style.display=""; }
 
-  // CSV PARSER
+  // CSV parser
   function parseCSVText(text){
     const rows = []; let i=0, cur="", inQuotes=false, row=[];
     const pushCell=()=>{ row.push(cur); cur=""; };
@@ -261,7 +266,7 @@ html = r"""
     return rows;
   }
 
-  // SAMPLE CSV
+  // Sample CSV
   const sampleCSV = `Alternative,Cost,Quality,Delivery Time,Temperature
 A1,200,8,4,30
 A2,250,7,5,60
@@ -270,169 +275,141 @@ A3,300,9,6,85
   $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(sampleCSV);
   $("downloadSample").download = "sample.csv";
 
-  // TABS
-  $("tabRank").onclick=()=>{ $("tabRank").classList.add("active"); $("tabCompare").classList.remove("active"); show($("viewRank"),true); show($("viewCompare"),false); };
-  $("tabCompare").onclick=()=>{ $("tabCompare").classList.add("active"); $("tabRank").classList.remove("active"); show($("viewRank"),false); show($("viewCompare"),true); };
-
-  // COMPARISON images
-  $("urlScatter").oninput = ()=>{ const v=$("urlScatter").value.trim(); if(v){ $("imgScatter").src=v; show($("imgScatter"),true);} else show($("imgScatter"),false); };
-  $("urlCorr").oninput = ()=>{ const v=$("urlCorr").value.trim(); if(v){ $("imgCorr").src=v; show($("imgCorr"),true);} else show($("imgCorr"),false); };
-  $("upScatter").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $("imgScatter").src=r.result; show($("imgScatter"),true); }; r.readAsDataURL(f); };
-  $("upCorr").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $("imgCorr").src=r.result; show($("imgCorr"),true); }; r.readAsDataURL(f); };
-
-  // STATE
+  // state
   let columns=[], rows=[], crits=[], types={}, ideals={}, weights={}, beta=0.5, weightMode='equal';
-  $("beta").oninput = ()=>{ beta = parseFloat($("beta").value); $("betaVal").textContent = beta.toFixed(2); };
-  $("wEqual").onchange = ()=>{ weightMode='equal'; show($("weightsGrid"),false); };
-  $("wCustom").onchange = ()=>{ weightMode='custom'; show($("weightsGrid"),true); };
+  const C = 0.01;
+  const toNum=(v)=>{ const x=parseFloat(String(v).replace(/,/g,"")); return isFinite(x)?x:NaN; };
 
-  // UPLOAD
+  $("beta").oninput = ()=>{ beta = parseFloat($("beta").value); document.getElementById("betaVal").textContent = beta.toFixed(2); };
+  $("wEqual").onchange = ()=>{ weightMode='equal'; document.getElementById("weightsGrid").style.display="none"; };
+  $("wCustom").onchange = ()=>{ weightMode='custom'; document.getElementById("weightsGrid").style.display=""; };
+
+  // upload CSV
   $("csvFile").onchange = (e)=>{
     const f = e.target.files[0]; if(!f) return;
-    const reader = new FileReader();
-    reader.onload = ()=>{ try{ initFromCSV(String(reader.result)); }catch(ex){ err(ex.message || String(ex)); } };
-    reader.readAsText(f);
+    const r = new FileReader();
+    r.onload = ()=>{ try{ initFromCSV(String(r.result)); }catch(ex){ err(ex.message||String(ex)); } };
+    r.readAsText(f);
   };
 
-  // ALWAYS TREAT FIRST COLUMN AS ALTERNATIVE
+  // init CSV (first column always Alternative)
   function initFromCSV(txt){
     const arr = parseCSVText(txt);
     if(!arr.length) throw new Error("Empty CSV");
-
-    // sanitize headers to strings
     columns = arr[0].map(c => String(c ?? "").trim());
-
-    // if any column is literally 'Alternative', move it to index 0; else rename the first column to 'Alternative'
-    if (columns.includes("Alternative")) {
+    if (columns.includes("Alternative")){
       const idx = columns.indexOf("Alternative");
-      if (idx !== 0) { const name = columns.splice(idx,1)[0]; columns.unshift(name); }
+      if (idx !== 0){ const name = columns.splice(idx,1)[0]; columns.unshift(name); }
     } else {
       columns[0] = "Alternative";
     }
-
-    // criteria = everything AFTER column 0
     crits = columns.slice(1);
-
     rows = arr.slice(1).filter(r=>r.length>=columns.length).map(r=>{
       const obj={}; columns.forEach((c,i)=> obj[c]=r[i] ?? ""); return obj;
     });
 
-    // defaults
     types  = Object.fromEntries(crits.map(c=>[c,"Benefit"]));
     ideals = Object.fromEntries(crits.map(c=>[c,""]));
     weights= Object.fromEntries(crits.map(c=>[c,1]));
 
-    renderMatrix();
-    renderTypes();
-    renderWeights();
-    show($("matrixCard"),true);
-    show($("typesCard"),true);
-    show($("weightsCard"),true);
-    show($("weightsGrid"), weightMode==='custom');
-    show($("betaCard"),true);
-    show($("resultCard"),false);
+    renderMatrix(); renderTypes(); renderWeights();
+    document.getElementById("matrixCard").style.display="";
+    document.getElementById("typesCard").style.display="";
+    document.getElementById("weightsCard").style.display="";
+    document.getElementById("betaCard").style.display="";
+    document.getElementById("resultCard").style.display="none";
   }
 
-  // PAPER EXAMPLE
-  $("loadPaperBtn").onclick = ()=>{
-    const paper = `Alternative,Cost,Quality,Delivery Time,Temperature
+  // paper example
+  document.getElementById("loadPaperBtn").onclick = ()=>{
+    const csv = `Alternative,Cost,Quality,Delivery Time,Temperature
 A1,200,8,4,30
 A2,250,7,5,60
 A3,300,9,6,85
 `;
-    initFromCSV(paper);
+    initFromCSV(csv);
     types = { "Cost":"Cost", "Quality":"Benefit", "Delivery Time":"Cost", "Temperature":"Ideal (Goal)" };
     ideals["Temperature"] = "60";
-    weightMode = 'equal'; $("wEqual").checked = true; $("wCustom").checked = false; show($("weightsGrid"), false);
-    beta = 0.5; $("beta").value = "0.5"; $("betaVal").textContent = "0.50";
+    weightMode = 'equal';
+    document.getElementById("wEqual").checked = true;
+    document.getElementById("wCustom").checked = false;
+    document.getElementById("weightsGrid").style.display="none";
+    beta = 0.5; document.getElementById("beta").value="0.5"; document.getElementById("betaVal").textContent="0.50";
     renderTypes(); renderWeights();
     runSYAI();
   };
 
-  // UI BUILDERS
+  // UI builders
   function renderMatrix(){
-    const tb = $("matrixTable"); tb.innerHTML = "";
+    const tb = document.getElementById("matrixTable"); tb.innerHTML="";
     const thead = document.createElement("thead"); const trh = document.createElement("tr");
     columns.forEach(c=>{ const th=document.createElement("th"); th.textContent=c; trh.appendChild(th); });
     thead.appendChild(trh); tb.appendChild(thead);
     const tbody = document.createElement("tbody");
     rows.slice(0,10).forEach(r=>{
       const tr=document.createElement("tr");
-      columns.forEach(c=>{ const td=document.createElement("td"); td.textContent=String(r[c] ?? ""); tr.appendChild(td); });
+      columns.forEach(c=>{ const td=document.createElement("td"); td.textContent=String(r[c]??""); tr.appendChild(td); });
       tbody.appendChild(tr);
     });
     tb.appendChild(tbody);
   }
 
   function renderTypes(){
-    const wrap = $("typesGrid"); wrap.innerHTML="";
+    const wrap=document.getElementById("typesGrid"); wrap.innerHTML="";
     crits.forEach(c=>{
-      const box = document.createElement("div"); box.style.minWidth="240px";
-      const lab = document.createElement("div"); lab.className="label"; lab.textContent=c; box.appendChild(lab);
-
-      const sel = document.createElement("select");
+      const box=document.createElement("div"); box.style.minWidth="240px";
+      const lab=document.createElement("div"); lab.className="label"; lab.textContent=c; box.appendChild(lab);
+      const sel=document.createElement("select");
       ["Benefit","Cost","Ideal (Goal)"].forEach(v=>{ const o=document.createElement("option"); o.textContent=v; sel.appendChild(o); });
-      sel.value = types[c] || "Benefit";
+      sel.value = types[c]||"Benefit";
       sel.onchange = ()=>{ types[c]=sel.value; renderTypes(); };
       box.appendChild(sel);
-
-      if((types[c]||"") === "Ideal (Goal)"){
+      if((types[c]||"")==="Ideal (Goal)"){
         const inp=document.createElement("input"); inp.className="mt2"; inp.type="number"; inp.step="any"; inp.placeholder="Goal value";
-        inp.value = ideals[c] || "";
-        inp.oninput = ()=> ideals[c] = inp.value;
-        box.appendChild(inp);
-      } else {
-        delete ideals[c];
-      }
+        inp.value=ideals[c]||""; inp.oninput=()=> ideals[c]=inp.value; box.appendChild(inp);
+      }else{ delete ideals[c]; }
       wrap.appendChild(box);
     });
   }
 
   function renderWeights(){
-    const wrap = $("weightsGrid"); wrap.innerHTML="";
+    const wrap=document.getElementById("weightsGrid"); wrap.innerHTML="";
     crits.forEach(c=>{
-      const box = document.createElement("div"); box.style.minWidth="160px";
-      const lab = document.createElement("div"); lab.className="label"; lab.textContent = `w(${c})`; box.appendChild(lab);
-      const inp=document.createElement("input"); inp.type="number"; inp.step="0.001"; inp.min="0"; inp.value = weights[c] ?? 0;
-      inp.oninput = ()=> weights[c] = inp.value;
-      box.appendChild(inp);
+      const box=document.createElement("div"); box.style.minWidth="160px";
+      const lab=document.createElement("div"); lab.className="label"; lab.textContent=`w(${c})`; box.appendChild(lab);
+      const inp=document.createElement("input"); inp.type="number"; inp.step="0.001"; inp.min="0"; inp.value=weights[c]??0;
+      inp.oninput=()=> weights[c]=inp.value; box.appendChild(inp);
       wrap.appendChild(box);
     });
   }
 
-  // SYAI core
-  const C = 0.01;
-  function toNum(v){ const x=parseFloat(String(v).replace(/,/g,"")); return isFinite(x)?x:NaN; }
-
   function normalizeColumn(vals, ctype, goal){
-    const max = Math.max(...vals); const min = Math.min(...vals); const R = max - min;
+    const max=Math.max(...vals), min=Math.min(...vals), R=max-min;
     let xStar;
-    if(ctype==="Benefit") xStar = max;
-    else if(ctype==="Cost") xStar = min;
+    if(ctype==="Benefit") xStar=max;
+    else if(ctype==="Cost") xStar=min;
     else { const g=parseFloat(goal); xStar=isFinite(g)?g:(vals.reduce((s,v)=>s+(isFinite(v)?v:0),0)/vals.length); }
     if(Math.abs(R)<1e-12) return vals.map(_=>1.0);
     return vals.map(x=> Math.max(C, Math.min(1, C + (1-C)*(1-Math.abs(x-xStar)/R))));
   }
 
   function compute(){
-    if(!columns.length || !rows.length){ err("No data"); return null; }
-    const X = rows.map(r=> Object.fromEntries(crits.map(c=>[c,toNum(r[c])])) );
-    const N = {};
+    if(!columns.length||!rows.length){ err("No data"); return null; }
+    const X=rows.map(r=> Object.fromEntries(crits.map(c=>[c,toNum(r[c])])) );
+    const N={};
     crits.forEach(c=>{
-      const series = X.map(row=>row[c]);
-      N[c] = normalizeColumn(series, types[c] || "Benefit", ideals[c]);
+      const series=X.map(row=>row[c]);
+      N[c]=normalizeColumn(series, types[c]||"Benefit", ideals[c]);
     });
 
     const w={};
-    if(weightMode==='equal'){
-      crits.forEach(c=> w[c]=1/crits.length);
-    } else {
-      let sumw = 0;
-      crits.forEach(c=>{ const v=Math.max(0, parseFloat(weights[c]||0)); w[c]= isFinite(v)?v:0; sumw += w[c]; });
-      if(sumw<=0) crits.forEach(c=> w[c]=1/crits.length); else crits.forEach(c=> w[c]/=sumw);
+    if(weightMode==='equal'){ crits.forEach(c=> w[c]=1/crits.length); }
+    else {
+      let sum=0; crits.forEach(c=>{ const v=Math.max(0,parseFloat(weights[c]||0)); w[c]=isFinite(v)?v:0; sum+=w[c]; });
+      if(sum<=0) crits.forEach(c=> w[c]=1/crits.length); else crits.forEach(c=> w[c]/=sum);
     }
 
-    const W = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, N[c][i]*w[c]])) );
+    const W=rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c,N[c][i]*w[c]])) );
     const Aplus={}, Aminus={};
     crits.forEach(c=>{
       let mx=-Infinity, mn=Infinity;
@@ -440,24 +417,23 @@ A3,300,9,6,85
       Aplus[c]=mx; Aminus[c]=mn;
     });
 
-    const res = rows.map((r,i)=>{
+    const res=rows.map((r,i)=>{
       let Dp=0, Dm=0;
-      crits.forEach(c=>{ Dp += Math.abs(W[i][c]-Aplus[c]); Dm += Math.abs(W[i][c]-Aminus[c]); });
+      crits.forEach(c=>{ Dp+=Math.abs(W[i][c]-Aplus[c]); Dm+=Math.abs(W[i][c]-Aminus[c]); });
       const denom = beta*Dp + (1-beta)*Dm || Number.EPSILON;
       const Close = ((1-beta)*Dm)/denom;
-      return { Alternative: String(r["Alternative"]), Dp, Dm, Close };
+      return { Alternative:String(r["Alternative"]), Dp, Dm, Close };
     });
-    res.sort((a,b)=> b.Close - a.Close);
+    res.sort((a,b)=> b.Close-a.Close);
     res.forEach((r,i,arr)=> r.Rank = arr.slice(0,i).filter(x=>x.Close>r.Close).length + 1);
     return res;
   }
 
-  $("runBtn").onclick = ()=>runSYAI();
+  document.getElementById("runBtn").onclick = ()=> runSYAI();
   function runSYAI(){
-    const result = compute(); if(!result) return;
+    const result=compute(); if(!result) return;
 
-    // table (black text)
-    const tb = $("resultTable"); tb.innerHTML="";
+    const tb=document.getElementById("resultTable"); tb.innerHTML="";
     const thead=document.createElement("thead"); const trh=document.createElement("tr");
     ["Alternative","D+","D-","Closeness","Rank"].forEach(h=>{ const th=document.createElement("th"); th.textContent=h; trh.appendChild(th); });
     thead.appendChild(trh); tb.appendChild(thead);
@@ -470,143 +446,135 @@ A3,300,9,6,85
       tbody.appendChild(tr);
     });
     tb.appendChild(tbody);
-    show($("resultCard"),true);
+    document.getElementById("resultCard").style.display="";
 
     drawBar(result.map(r=>({name:r.Alternative, value:r.Close})));
     drawLine(result.map(r=>({rank:r.Rank, value:r.Close, name:r.Alternative})));
   }
 
-  // Charts + tooltips
-  const PASTELS = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"];
+  // charts + tooltips
+  const PASTELS=["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"];
   let barRects=[], linePoints=[];
 
+  function showTip(html,x,y){
+    let tt=document.getElementById("tt");
+    if(!tt){
+      tt=document.createElement("div");
+      tt.id="tt";
+      tt.style.position="fixed"; tt.style.display="none"; tt.style.padding="6px 8px";
+      tt.style.borderRadius="8px"; tt.style.background="#fff"; tt.style.color="#111";
+      tt.style.border="1px solid #e5e7eb"; tt.style.boxShadow="0 12px 24px rgba(0,0,0,.18)";
+      tt.style.fontSize="12px"; tt.style.pointerEvents="none"; tt.style.zIndex="99999";
+      document.body.appendChild(tt);
+    }
+    tt.innerHTML=html; tt.style.left=(x+12)+"px"; tt.style.top=(y+12)+"px"; tt.style.display="block";
+  }
+  function hideTip(){ const tt=document.getElementById("tt"); if(tt) tt.style.display="none"; }
+
   function drawBar(data){
-    const svg = $("barSVG"); while(svg.firstChild) svg.removeChild(svg.firstChild);
-    barRects.length = 0; hideTip();
-    const rect = svg.getBoundingClientRect();
-    const W = rect.width||800, H = rect.height||360, padL=50,padR=20,padT=18,padB=44;
-    const max = Math.max(...data.map(d=>d.value)) || 1;
-    const barW = (W - padL - padR) / data.length * 0.8;
+    const svg=document.getElementById("barSVG"); while(svg.firstChild) svg.removeChild(svg.firstChild);
+    barRects.length=0; hideTip();
+    const rect=svg.getBoundingClientRect();
+    const W=rect.width||800, H=rect.height||360, padL=50,padR=20,padT=18,padB=44;
+    const max=Math.max(...data.map(d=>d.value))||1;
+    const cell=(W-padL-padR)/data.length; const barW=cell*0.8;
 
     for(let t=0;t<=5;t++){
-      const val = max*t/5;
-      const y = H - padB - (H - padT - padB)*(val/max);
-      const line = document.createElementNS("http://www.w3.org/2000/svg","line");
-      line.setAttribute("x1", padL-6); line.setAttribute("x2", W-padR);
-      line.setAttribute("y1", y); line.setAttribute("y2", y);
-      line.setAttribute("stroke", "#374151"); line.setAttribute("stroke-dasharray","3 3");
-      svg.appendChild(line);
-      const tEl = document.createElementNS("http://www.w3.org/2000/svg","text");
-      tEl.setAttribute("x", padL-10); tEl.setAttribute("y", y+4);
-      tEl.setAttribute("text-anchor","end"); tEl.setAttribute("font-size","12");
-      tEl.setAttribute("fill","#000"); tEl.textContent = val.toFixed(2);
-      svg.appendChild(tEl);
+      const val=max*t/5, y=H-padB-(H-padT-padB)*(val/max);
+      const line=document.createElementNS("http://www.w3.org/2000/svg","line");
+      line.setAttribute("x1",padL-6); line.setAttribute("x2",W-padR); line.setAttribute("y1",y); line.setAttribute("y2",y);
+      line.setAttribute("stroke","#374151"); line.setAttribute("stroke-dasharray","3 3"); svg.appendChild(line);
+      const tEl=document.createElementNS("http://www.w3.org/2000/svg","text");
+      tEl.setAttribute("x",padL-10); tEl.setAttribute("y",y+4); tEl.setAttribute("text-anchor","end"); tEl.setAttribute("font-size","12"); tEl.setAttribute("fill","#000");
+      tEl.textContent=val.toFixed(2); svg.appendChild(tEl);
     }
 
     data.forEach((d,i)=>{
-      const x = padL + i*(W - padL - padR)/data.length + ((W - padL - padR)/data.length - barW)/2;
-      const h = (H - padT - padB) * (d.value/max);
-      const y = H - padB - h;
-
-      const rectEl = document.createElementNS("http://www.w3.org/2000/svg","rect");
-      rectEl.setAttribute("x", x); rectEl.setAttribute("y", y);
-      rectEl.setAttribute("width", barW); rectEl.setAttribute("height", h);
-      rectEl.setAttribute("fill", PASTELS[i%PASTELS.length]);
-      svg.appendChild(rectEl);
-
-      // value label (black)
-      const txt = document.createElementNS("http://www.w3.org/2000/svg","text");
-      txt.setAttribute("x", x + barW/2); txt.setAttribute("y", Math.max(y + 14, padT + 12));
-      txt.setAttribute("text-anchor","middle"); txt.setAttribute("font-size","12"); txt.setAttribute("fill","#000");
-      txt.textContent = (d.value).toFixed(3);
-      svg.appendChild(txt);
-
-      // x labels (black)
-      const lbl = document.createElementNS("http://www.w3.org/2000/svg","text");
-      lbl.setAttribute("x", x + barW/2); lbl.setAttribute("y", H - 12);
-      lbl.setAttribute("text-anchor","middle"); lbl.setAttribute("font-size","12");
-      lbl.setAttribute("fill","#000"); lbl.textContent = d.name;
-      svg.appendChild(lbl);
-
-      barRects.push({x, y, w:barW, h, d});
+      const x=padL+i*cell+(cell-barW)/2; const h=(H-padT-padB)*(d.value/max); const y=H-padB-h;
+      const r=document.createElementNS("http://www.w3.org/2000/svg","rect");
+      r.setAttribute("x",x); r.setAttribute("y",y); r.setAttribute("width",barW); r.setAttribute("height",h); r.setAttribute("fill",PASTELS[i%PASTELS.length]); svg.appendChild(r);
+      const v=document.createElementNS("http://www.w3.org/2000/svg","text");
+      v.setAttribute("x",x+barW/2); v.setAttribute("y",Math.max(y+14,padT+12)); v.setAttribute("text-anchor","middle"); v.setAttribute("font-size","12"); v.setAttribute("fill","#000");
+      v.textContent=d.value.toFixed(3); svg.appendChild(v);
+      const lbl=document.createElementNS("http://www.w3.org/2000/svg","text");
+      lbl.setAttribute("x",x+barW/2); lbl.setAttribute("y",H-12); lbl.setAttribute("text-anchor","middle"); lbl.setAttribute("font-size","12"); lbl.setAttribute("fill","#000"); lbl.textContent=d.name; svg.appendChild(lbl);
+      barRects.push({x,y,w:barW,h,d});
     });
 
-    svg.onmousemove = (ev)=>{
-      const b = svg.getBoundingClientRect(), mx = ev.clientX - b.left, my = ev.clientY - b.top;
-      const hit = barRects.find(r => mx>=r.x && mx<=r.x+r.w && my>=r.y && my<=r.y+r.h);
-      if(hit){
-        showTip(`${hit.d.name} — <b>${hit.d.value.toFixed(6)}</b>`, ev.clientX, ev.clientY);
-      }else hideTip();
+    svg.onmousemove=(e)=>{
+      const b=svg.getBoundingClientRect(), mx=e.clientX-b.left, my=e.clientY-b.top;
+      const hit=barRects.find(r=> mx>=r.x && mx<=r.x+r.w && my>=r.y && my<=r.y+r.h );
+      if(hit) showTip(`${hit.d.name} — <b>${hit.d.value.toFixed(6)}</b>`, e.clientX, e.clientY); else hideTip();
     };
-    svg.onmouseleave = hideTip;
+    svg.onmouseleave=hideTip;
   }
 
   function drawLine(data){
-    const svg = $("lineSVG"); while(svg.firstChild) svg.removeChild(svg.firstChild);
-    linePoints.length = 0; hideTip();
+    const svg=document.getElementById("lineSVG"); while(svg.firstChild) svg.removeChild(svg.firstChild);
+    linePoints.length=0; hideTip();
 
-    const rect = svg.getBoundingClientRect();
-    const W = rect.width||800, H = rect.height||300, padL=50,padR=20,padT=14,padB=30;
-    const maxY = Math.max(...data.map(d=>d.value))||1, minX = 1, maxX = Math.max(...data.map(d=>d.rank))||1;
+    const rect=svg.getBoundingClientRect();
+    const W=rect.width||800, H=rect.height||300, padL=50,padR=20,padT=14,padB=30;
+    const maxY=Math.max(...data.map(d=>d.value))||1, minX=1, maxX=Math.max(...data.map(d=>d.rank))||1;
 
-    const scaleX = (r)=> padL + (W-padL-padR) * ( (r-minX) / (maxX-minX||1) );
-    const scaleY = (v)=> H - padB - (H-padT-padB) * (v/maxY);
+    const sx=(r)=> padL+(W-padL-padR)*((r-minX)/(maxX-minX||1));
+    const sy=(v)=> H-padB-(H-padT-padB)*(v/maxY);
 
+    // gridlines + y labels
     for(let t=0;t<=5;t++){
-      const val = maxY*t/5;
-      const y = H - padB - (H - padT - padB)*(val/maxY);
-      const line = document.createElementNS("http://www.w3.org/2000/svg","line");
-      line.setAttribute("x1", padL-6); line.setAttribute("x2", W-padR);
-      line.setAttribute("y1", y); line.setAttribute("y2", y);
-      line.setAttribute("stroke", "#374151"); line.setAttribute("stroke-dasharray","3 3");
-      svg.appendChild(line);
-      const tEl = document.createElementNS("http://www.w3.org/2000/svg","text");
-      tEl.setAttribute("x", padL-10); tEl.setAttribute("y", y+4);
-      tEl.setAttribute("text-anchor","end"); tEl.setAttribute("font-size","12");
-      tEl.setAttribute("fill","#000"); tEl.textContent = val.toFixed(2);
-      svg.appendChild(tEl);
+      const val=maxY*t/5, y=H-padB-(H-padT-padB)*(val/maxY);
+      const gl=document.createElementNS("http://www.w3.org/2000/svg","line");
+      gl.setAttribute("x1",padL-6); gl.setAttribute("x2",W-padR); gl.setAttribute("y1",y); gl.setAttribute("y2",y);
+      gl.setAttribute("stroke","#374151"); gl.setAttribute("stroke-dasharray","3 3"); svg.appendChild(gl);
+      const lbl=document.createElementNS("http://www.w3.org/2000/svg","text");
+      lbl.setAttribute("x",padL-10); lbl.setAttribute("y",y+4); lbl.setAttribute("text-anchor","end"); lbl.setAttribute("font-size","12"); lbl.setAttribute("fill","#000");
+      lbl.textContent=val.toFixed(2); svg.appendChild(lbl);
     }
 
-    const p = document.createElementNS("http://www.w3.org/2000/svg","path");
-    let dstr = "";
-    data.sort((a,b)=> a.rank - b.rank).forEach((pnt,idx)=>{
-      const x=scaleX(pnt.rank), y=scaleY(pnt.value);
-      dstr += (idx===0? "M":"L") + x + " " + y + " ";
-      linePoints.push({x,y,info:pnt});
+    // line path
+    const p=document.createElementNS("http://www.w3.org/2000/svg","path");
+    let dstr="";
+    data.sort((a,b)=> a.rank-b.rank).forEach((pt,i)=>{
+      const x=sx(pt.rank), y=sy(pt.value);
+      dstr += (i===0? "M":"L") + x + " " + y + " ";
+      linePoints.push({x,y,info:pt});
     });
     p.setAttribute("d", dstr.trim());
     p.setAttribute("fill","none"); p.setAttribute("stroke","#64748b"); p.setAttribute("stroke-width","2");
     svg.appendChild(p);
 
+    // points + value labels (black)
     linePoints.forEach(lp=>{
-      const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
+      const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
       c.setAttribute("cx",lp.x); c.setAttribute("cy",lp.y); c.setAttribute("r","4"); c.setAttribute("fill","#94a3b8");
       svg.appendChild(c);
-      const t = document.createElementNS("http://www.w3.org/2000/svg","text");
+      const t=document.createElementNS("http://www.w3.org/2000/svg","text");
       t.setAttribute("x",lp.x+6); t.setAttribute("y",lp.y-6); t.setAttribute("font-size","12"); t.setAttribute("fill","#000");
-      t.textContent = lp.info.value.toFixed(3); svg.appendChild(t);
+      t.textContent=lp.info.value.toFixed(3); svg.appendChild(t);
     });
 
+    // x-axis (ranks)
     for(let r=1;r<=maxX;r++){
-      const x=scaleX(r);
-      const t = document.createElementNS("http://www.w3.org/2000/svg","text");
-      t.setAttribute("x",x); t.setAttribute("y",H-8); t.setAttribute("text-anchor","middle"); t.setAttribute("font-size","12"); t.setAttribute("fill","#000");
-      t.textContent = r; svg.appendChild(t);
+      const x=sx(r);
+      const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
+      tx.setAttribute("x",x); tx.setAttribute("y",H-8); tx.setAttribute("text-anchor","middle"); tx.setAttribute("font-size","12"); tx.setAttribute("fill","#000");
+      tx.textContent=r; svg.appendChild(tx);
     }
 
-    svg.onmousemove = (ev)=>{
-      const b = svg.getBoundingClientRect(), mx = ev.clientX - b.left, my = ev.clientY - b.top;
+    // tooltip
+    svg.onmousemove=(e)=>{
+      const b=svg.getBoundingClientRect(), mx=e.clientX-b.left, my=e.clientY-b.top;
       let best=null, dist=1e9;
       linePoints.forEach(lp=>{
-        const d = Math.hypot(lp.x-mx, lp.y-my);
+        const d=Math.hypot(lp.x-mx, lp.y-my);
         if(d<dist){ dist=d; best=lp; }
       });
       if(best && dist<12){
-        const i = best.info;
-        showTip(`${i.name || "Alt"} — <b>${i.value.toFixed(6)}</b> (Rank ${i.rank})`, ev.clientX, ev.clientY);
+        const i=best.info;
+        showTip(`${i.name||"Alt"} — <b>${i.value.toFixed(6)}</b> (Rank ${i.rank})`, e.clientX, e.clientY);
       } else hideTip();
     };
-    svg.onmouseleave = hideTip;
+    svg.onmouseleave=hideTip;
   }
 })();
 </script>
@@ -614,4 +582,8 @@ A3,300,9,6,85
 </html>
 """
 
-components.html(html, height=2200, scrolling=True)
+# inject image URIs into HTML (simple .replace so braces in CSS/JS are safe)
+html = html.replace("SCATTER_DATA_URI", SCATTER_URI or "")
+html = html.replace("CORR_DATA_URI", CORR_URI or "")
+
+components.html(html, height=2600, scrolling=True)
