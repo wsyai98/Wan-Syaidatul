@@ -1,270 +1,398 @@
-# app.py
-import streamlit as st
-import pandas as pd
-import numpy as np
-from pathlib import Path
-import altair as alt
+import React, { useMemo, useState } from "react";
+import Papa from "papaparse";
+import { Download, Upload, Image as ImageIcon, BarChart3, LineChart as LineChartIcon } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, LabelList, Cell } from "recharts";
 
-st.set_page_config(page_title="SYAI-Rank", layout="wide")
-st.title("SYAI-Rank (C=0.01, L1 distances, deferred weight normalization)")
+// --- Styling helpers ---
+const card = "rounded-2xl shadow p-5 bg-white/70 dark:bg-neutral-900/70 backdrop-blur";
+const sectionTitle = "text-xl font-semibold mb-3";
 
-C = 0.01  # normalization floor
+// Core constants
+const C = 0.01; // normalization floor
 
-# ---------- Core math ----------
-def normalize_column(x: pd.Series, ctype: str, goal_val: float | None) -> pd.Series:
-    x = x.astype(float)
-    R = x.max() - x.min()
-    if ctype == "Benefit":
-        x_star = x.max()
-    elif ctype == "Cost":
-        x_star = x.min()
-    else:  # Ideal (Goal)
-        x_star = float(goal_val) if goal_val is not None else float(x.mean())
+// Utility: parse CSV text to {columns, rows}
+function parseCSV(file, onDone) {
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      const rows = results.data;
+      const columns = results.meta.fields || [];
+      onDone({ columns, rows });
+    },
+  });
+}
 
-    if R == 0 or np.isclose(R, 0.0):
-        norm = pd.Series(1.0, index=x.index, dtype=float)
-    else:
-        norm = C + (1 - C) * (1 - (x - x_star).abs() / R)
-        norm = norm.clip(lower=C, upper=1.0)
-    return norm
+// Core math in JS (mirrors your Python)
+function computeSYAI({ rows, columns, types, ideals, rawWeights, beta }) {
+  const crits = columns.filter((c) => c !== "Alternative");
+  const m = crits.length;
 
-def compute_syai(df: pd.DataFrame,
-                 types: list[str],
-                 ideals: dict[str, float],
-                 weights: pd.Series,
-                 beta: float):
-    X = df.apply(pd.to_numeric, errors="coerce")
-    if X.isna().any().any():
-        st.warning("Non-numeric values were coerced to NaN. Check your data.")
+  // Build numeric matrix X[alt][col]
+  const alts = rows.map((r) => String(r["Alternative"]))
+    .filter((v, i, a) => v && a.indexOf(v) === i);
 
-    # 1) normalize
-    N = pd.DataFrame(index=X.index, columns=X.columns, dtype=float)
-    for j, col in enumerate(X.columns):
-        N[col] = normalize_column(X[col], types[j], ideals.get(col))
+  const X = {};
+  alts.forEach((a) => (X[a] = {}));
+  rows.forEach((r) => {
+    const a = String(r["Alternative"]);
+    crits.forEach((c) => {
+      const v = parseFloat(String(r[c]).replace(/,/g, ""));
+      X[a][c] = isFinite(v) ? v : NaN;
+    });
+  });
 
-    # 2) weight
-    w = weights.reindex(X.columns).astype(float)
-    W = N.mul(w, axis=1)
+  // Normalize per column
+  const N = {}; // normalized
+  alts.forEach((a) => (N[a] = {}));
 
-    # 3) A+ / A-
-    A_plus = W.max(axis=0)
-    A_minus = W.min(axis=0)
+  crits.forEach((c, j) => {
+    const colVals = alts.map((a) => X[a][c]);
+    const max = Math.max(...colVals);
+    const min = Math.min(...colVals);
+    const R = max - min;
 
-    # 4) L1 distances
-    D_plus = (W.sub(A_plus, axis=1).abs()).sum(axis=1)
-    D_minus = (W.sub(A_minus, axis=1).abs()).sum(axis=1)
+    let x_star;
+    if (types[c] === "Benefit") x_star = max;
+    else if (types[c] === "Cost") x_star = min;
+    else {
+      const g = parseFloat(ideals[c]);
+      x_star = isFinite(g) ? g : colVals.reduce((s, v) => s + (isFinite(v) ? v : 0), 0) / colVals.length;
+    }
 
-    # 5) closeness
-    denom = beta * D_plus + (1 - beta) * D_minus
-    denom = denom.replace(0, np.finfo(float).eps)
-    closeness = ((1 - beta) * D_minus) / denom
+    if (Math.abs(R) < 1e-12) {
+      alts.forEach((a) => (N[a][c] = 1.0));
+    } else {
+      alts.forEach((a) => {
+        const x = X[a][c];
+        const norm = C + (1 - C) * (1 - Math.abs(x - x_star) / R);
+        N[a][c] = Math.max(C, Math.min(1.0, norm));
+      });
+    }
+  });
 
-    res = pd.DataFrame({"D+": D_plus, "D-": D_minus, "Closeness Score": closeness})
-    res["Rank"] = res["Closeness Score"].rank(ascending=False, method="min").astype(int)
-    res = res.sort_values("Closeness Score", ascending=False)
+  // Weights: normalize raw to sum=1 (fallback to equal)
+  let w = {};
+  let sumw = 0;
+  crits.forEach((c) => {
+    const v = parseFloat(rawWeights[c]);
+    const safe = isFinite(v) ? Math.max(0, v) : 0;
+    w[c] = safe;
+    sumw += safe;
+  });
+  if (sumw <= 0) {
+    crits.forEach((c) => (w[c] = 1 / m));
+  } else {
+    crits.forEach((c) => (w[c] = w[c] / sumw));
+  }
 
-    return res, N, W, A_plus, A_minus, w
+  // Weighted matrix + A+/A-
+  const W = {};
+  alts.forEach((a) => (W[a] = {}));
+  const A_plus = {}, A_minus = {};
+  crits.forEach((c) => {
+    let max = -Infinity, min = Infinity;
+    alts.forEach((a) => {
+      W[a][c] = N[a][c] * w[c];
+      if (W[a][c] > max) max = W[a][c];
+      if (W[a][c] < min) min = W[a][c];
+    });
+    A_plus[c] = max;
+    A_minus[c] = min;
+  });
 
-def normalize_weights_any(raw_w: pd.Series) -> pd.Series:
-    raw_w = raw_w.fillna(0).astype(float)
-    total = raw_w.sum()
-    if total <= 0:
-        st.warning("All custom weights are zero; defaulting to equal weights.")
-        return pd.Series([1.0/len(raw_w)]*len(raw_w), index=raw_w.index, dtype=float)
-    return raw_w / total
+  // Distances and closeness
+  const resRows = alts.map((a) => {
+    let Dp = 0, Dm = 0;
+    crits.forEach((c) => {
+      Dp += Math.abs(W[a][c] - A_plus[c]);
+      Dm += Math.abs(W[a][c] - A_minus[c]);
+    });
+    const denom = beta * Dp + (1 - beta) * Dm || Number.EPSILON;
+    const closeness = ((1 - beta) * Dm) / denom;
+    return { Alternative: a, Dp, Dm, Closeness: closeness };
+  });
 
-# ---------- Sidebar ----------
-with st.sidebar:
-    st.markdown("### Navigation")
-    tab = st.radio("Go to:", ["SYAI Ranking", "Comparison with Other Methods"])
-    st.markdown("---")
-    st.markdown("### Sample CSV (first column = Alternative)")
-    st.download_button(
-        "Download sample.csv",
-        data=("Alternative,Cost,Quality,Delivery Time,Temperature\n"
-              "A1,200,8,4,30\n"
-              "A2,250,7,5,60\n"
-              "A3,300,9,6,85\n"),
-        file_name="sample.csv",
-        mime="text/csv",
-    )
-    run_test_click = st.button("Reproduce Paper Example (Test)")
+  resRows.sort((a, b) => b.Closeness - a.Closeness);
+  resRows.forEach((r, i, arr) => {
+    // Rank with ties: method "min"
+    if (i === 0) r.Rank = 1;
+    else r.Rank = (arr.slice(0, i + 1).filter(x => x.Closeness > r.Closeness).length) + 1;
+  });
 
-# persist test mode
-if "run_test" not in st.session_state:
-    st.session_state.run_test = False
-if run_test_click:
-    st.session_state.run_test = True
+  return { alts, crits, X, N, W, A_plus, A_minus, w, resRows };
+}
 
-# ---------- SYAI TAB ----------
-if tab == "SYAI Ranking":
-    st.header("Step 1: Upload Decision Matrix")
-    file = st.file_uploader("Upload CSV (first column must be Alternative)", type=["csv"])
+// Sample CSV string
+export default function App() {
+  const sampleCSV = `Alternative,Cost,Quality,Delivery Time,Temperature\nA1,200,8,4,30\nA2,250,7,5,60\nA3,300,9,6,85\n`;
 
-    df = None
-    if st.session_state.run_test:
-        df = pd.DataFrame({
-            "Cost": [200, 250, 300],
-            "Quality": [8, 7, 9],
-            "Delivery Time": [4, 5, 6],
-            "Temperature": [30, 60, 85],
-        }, index=["A1", "A2", "A3"])
-        df.index.name = "Alternative"
-        st.success("Loaded paper example data.")
-    elif file:
-        df = pd.read_csv(file, index_col=0)
-        df.index.name = "Alternative"
+  const [data, setData] = useState({ columns: [], rows: [] });
+  const [types, setTypes] = useState({});
+  const [ideals, setIdeals] = useState({});
+  const [weights, setWeights] = useState({});
+  const [beta, setBeta] = useState(0.5);
+  const [activeTab, setActiveTab] = useState("rank");
+  const [urlScatter, setUrlScatter] = useState("");
+  const [urlCorr, setUrlCorr] = useState("");
 
-    if df is not None:
-        st.subheader("Decision Matrix")
-        st.dataframe(df)
+  // When CSV changes, init type/weight defaults
+  const onCSVLoaded = ({ columns, rows }) => {
+    if (!columns?.length) return;
+    // Ensure first column is Alternative
+    if (columns[0] !== "Alternative") {
+      // try to coerce
+      columns = ["Alternative", ...columns.filter((c) => c !== "Alternative")];
+    }
+    const crits = columns.filter((c) => c !== "Alternative");
+    const t = { ...types }, w = { ...weights }, g = { ...ideals };
+    crits.forEach((c) => {
+      if (!t[c]) t[c] = "Benefit";
+      if (!(c in w)) w[c] = 1;
+      if (!(c in g)) g[c] = "";
+    });
+    setTypes(t);
+    setWeights(w);
+    setIdeals(g);
+    setData({ columns, rows });
+  };
 
-    if df is not None and not df.empty:
-        # Step 2: Types
-        st.header("Step 2: Define Criteria Types")
-        types, ideals = [], {}
-        if st.session_state.run_test:
-            default_types = {"Cost": "Cost", "Quality": "Benefit",
-                             "Delivery Time": "Cost", "Temperature": "Ideal (Goal)"}
-            default_goal = {"Temperature": 60.0}
-        else:
-            default_types, default_goal = {}, {}
+  // Compute
+  const result = useMemo(() => {
+    if (!data.columns.length || !data.rows.length) return null;
+    const crits = data.columns.filter((c) => c !== "Alternative");
+    if (!crits.length) return null;
+    return computeSYAI({ rows: data.rows, columns: data.columns, types, ideals, rawWeights: weights, beta });
+  }, [data, types, ideals, weights, beta]);
 
-        for col in df.columns:
-            default_idx = 0
-            if col in default_types:
-                default_idx = {"Benefit": 0, "Cost": 1, "Ideal (Goal)": 2}[default_types[col]]
-            ctype = st.selectbox(f"Type for {col}",
-                                 ["Benefit", "Cost", "Ideal (Goal)"],
-                                 index=default_idx, key=f"type_{col}")
-            types.append(ctype)
-            if ctype == "Ideal (Goal)":
-                val_default = float(default_goal.get(col, df[col].mean()))
-                val = st.number_input(f"Ideal (Goal) value for {col}",
-                                      value=val_default, key=f"goal_{col}")
-                ideals[col] = float(val)
+  const resultTable = useMemo(() => {
+    if (!result) return null;
+    return result.resRows.map((r) => ({ Alternative: r.Alternative, "D+": r.Dp, "D-": r.Dm, Closeness: r.Closeness, Rank: r.Rank }));
+  }, [result]);
 
-        # Step 3: Weights
-        st.header("Step 3: Set Weights")
-        m = df.shape[1]
-        if st.session_state.run_test:
-            raw_w = pd.Series([1.0/m]*m, index=df.columns, dtype=float)
-            st.info("Test mode uses equal weights to match the paper example.")
-        else:
-            mode = st.radio("Weighting scheme", ["Equal (1/m)", "Custom"], horizontal=True)
-            if mode == "Custom":
-                cols = st.columns(min(4, m))
-                weight_inputs = {}
-                for j, col in enumerate(df.columns):
-                    with cols[j % len(cols)]:
-                        weight_inputs[col] = st.number_input(
-                            f"w({col})", min_value=0.0, value=0.0,
-                            step=0.001, format="%.6f", key=f"w_{col}"
-                        )
-                raw_w = pd.Series(weight_inputs, dtype=float)
-                st.write("Raw weights entered:")
-                st.dataframe(raw_w.to_frame("Raw").T)
-            else:
-                raw_w = pd.Series([1.0/m]*m, index=df.columns, dtype=float)
-                st.caption("Equal weights selected (1/m each).")
+  const colorPalette = [
+    "#4C78A8","#F58518","#E45756","#72B7B2","#54A24B","#EECA3B","#B279A2","#FF9DA6","#9D755D","#BAB0AC"
+  ];
 
-        # Step 4: β + Run
-        st.header("Step 4: Compute SYAI")
-        beta = st.slider("β (blend of D+ and D-)", 0.0, 1.0, 0.5, 0.01)
+  return (
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl md:text-3xl font-bold">SYAI‑Rank — Web Interface</h1>
+        <a
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white shadow hover:bg-blue-700"
+          href={`data:text/csv;charset=utf-8,${encodeURIComponent(sampleCSV)}`}
+          download="sample.csv"
+        >
+          <Download size={18}/> Sample CSV
+        </a>
+      </div>
 
-        if st.button("Run SYAI"):
-            w = normalize_weights_any(raw_w)
-            result, N, W, A_plus, A_minus, w_used = compute_syai(df, types, ideals, w, beta)
+      {/* Tabs */}
+      <div className="flex gap-2">
+        <button onClick={() => setActiveTab("rank")} className={`px-4 py-2 rounded-xl ${activeTab==='rank' ? 'bg-blue-600 text-white' : 'bg-neutral-200 dark:bg-neutral-800'}`}>SYAI Ranking</button>
+        <button onClick={() => setActiveTab("compare")} className={`px-4 py-2 rounded-xl ${activeTab==='compare' ? 'bg-blue-600 text-white' : 'bg-neutral-200 dark:bg-neutral-800'}`}>Comparison with Other Methods</button>
+      </div>
 
-            st.subheader("Normalized weights used (sum=1)")
-            st.dataframe(w_used.to_frame("Weight").T.style.format("{:.6f}"))
+      {activeTab === "rank" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left column: inputs */}
+          <div className="space-y-6 col-span-1">
+            <div className={card}>
+              <div className={sectionTitle}>Step 1: Upload Decision Matrix</div>
+              <div className="flex items-center gap-3">
+                <label className="inline-flex items-center px-3 py-2 rounded-lg bg-neutral-200 dark:bg-neutral-800 cursor-pointer">
+                  <Upload size={18} className="mr-2"/> Choose CSV
+                  <input type="file" accept=".csv" className="hidden" onChange={(e)=>{
+                    const f = e.target.files?.[0];
+                    if (f) parseCSV(f, onCSVLoaded);
+                  }}/>
+                </label>
+              </div>
+              <p className="text-sm opacity-70 mt-2">First column must be <b>Alternative</b>.</p>
+            </div>
 
-            st.subheader("Final Ranking (SYAI)")
-            st.dataframe(
-                result.reset_index().rename(columns={"index": "Alternative"}).style.format({
-                    "D+": "{:.6f}", "D-": "{:.6f}", "Closeness Score": "{:.6f}",
-                })
-            )
+            {!!data.columns.length && (
+              <div className={card}>
+                <div className={sectionTitle}>Step 2: Define Criteria Types</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {data.columns.filter((c)=>c!=="Alternative").map((c)=> (
+                    <div key={c} className="border rounded-xl p-3">
+                      <div className="font-medium mb-2">{c}</div>
+                      <select
+                        className="w-full rounded-lg bg-neutral-100 dark:bg-neutral-800 p-2"
+                        value={types[c]||"Benefit"}
+                        onChange={(e)=> setTypes({...types, [c]: e.target.value})}
+                      >
+                        <option>Benefit</option>
+                        <option>Cost</option>
+                        <option>Ideal (Goal)</option>
+                      </select>
+                      {types[c]==="Ideal (Goal)" && (
+                        <input
+                          type="number"
+                          step="any"
+                          className="mt-2 w-full rounded-lg bg-neutral-100 dark:bg-neutral-800 p-2"
+                          placeholder="Goal value"
+                          value={ideals[c] ?? ""}
+                          onChange={(e)=> setIdeals({...ideals, [c]: e.target.value})}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
-            # ---------- Visualizations (Altair) ----------
-            vis_df = result.sort_values("Rank").reset_index().rename(columns={"index": "Alternative"})
-            vis_df["Alternative"] = vis_df["Alternative"].astype(str)
+            {!!data.columns.length && (
+              <div className={card}>
+                <div className={sectionTitle}>Step 3: Set Weights (raw; auto‑normalized on run)</div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {data.columns.filter((c)=>c!=="Alternative").map((c, idx)=> (
+                    <div key={c} className="flex flex-col">
+                      <label className="text-sm mb-1">w({c})</label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        className="rounded-lg bg-neutral-100 dark:bg-neutral-800 p-2"
+                        value={weights[c] ?? 0}
+                        onChange={(e)=> setWeights({...weights, [c]: e.target.value})}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
-            st.subheader("Ranking Visualization — Bar")
-            bar = (
-                alt.Chart(vis_df)
-                .mark_bar()
-                .encode(
-                    x=alt.X("Alternative:N", sort=None, title="Alternative"),
-                    y=alt.Y("Closeness Score:Q", title="Closeness Score"),
-                    color=alt.Color("Alternative:N", legend=None),
-                    tooltip=["Alternative", alt.Tooltip("Closeness Score:Q", format=".4f"), "Rank:Q"],
-                )
-                .properties(height=360)
-            )
-            st.altair_chart(bar, use_container_width=True)
+            {!!data.columns.length && (
+              <div className={card}>
+                <div className={sectionTitle}>Step 4: β (blend of D⁺ and D⁻)</div>
+                <input type="range" min={0} max={1} step={0.01} value={beta} onChange={(e)=> setBeta(parseFloat(e.target.value))} className="w-full"/>
+                <div className="mt-2 text-sm">β = <b>{beta.toFixed(2)}</b></div>
+              </div>
+            )}
+          </div>
 
-            st.subheader("Ranking Visualization — Line")
-            line = (
-                alt.Chart(vis_df)
-                .mark_line(point=True)
-                .encode(
-                    x=alt.X("Rank:O", title="Rank (1 = best)"),
-                    y=alt.Y("Closeness Score:Q", title="Closeness Score"),
-                    tooltip=["Alternative", "Rank:Q", alt.Tooltip("Closeness Score:Q", format=".4f")],
-                    color=alt.value("#4C78A8"),
-                )
-                .properties(height=320)
-            )
-            st.altair_chart(line, use_container_width=True)
+          {/* Right column: data + results */}
+          <div className="space-y-6 col-span-2">
+            {!!data.columns.length && (
+              <div className={card}>
+                <div className="flex items-center justify-between">
+                  <div className={sectionTitle}>Decision Matrix (first 10 rows)</div>
+                </div>
+                <div className="overflow-auto max-h-[360px]">
+                  <table className="min-w-full text-sm">
+                    <thead className="sticky top-0 bg-white dark:bg-neutral-900">
+                      <tr>
+                        {data.columns.map((c)=> <th key={c} className="text-left p-2 border-b">{c}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.rows.slice(0,10).map((r, idx)=> (
+                        <tr key={idx} className="border-b hover:bg-neutral-50/50 dark:hover:bg-neutral-800/50">
+                          {data.columns.map((c)=> <td key={c} className="p-2">{String(r[c] ?? "")}</td>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
-# ---------- COMPARISON TAB ----------
-if tab == "Comparison with Other Methods":
-    st.header("Comparison of SYAI with Other MCDM Methods")
-    st.markdown("""
-    This section provides a comparison of **SYAI** against TOPSIS, VIKOR, SAW, COBRA,
-    WASPAS, and MOORA. Use either **URL** (e.g., raw GitHub) or **upload** the images.
-    """)
+            {result && (
+              <div className={card}>
+                <div className="flex items-center gap-2 mb-2"><BarChart3 size={18}/><div className={sectionTitle}>Final Ranking (SYAI)</div></div>
+                <div className="overflow-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr>
+                        {Object.keys(resultTable[0]||{Alternative:1}).map((c)=> <th key={c} className="text-left p-2 border-b">{c}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resultTable.map((r)=> (
+                        <tr key={r.Alternative} className="border-b">
+                          <td className="p-2 font-medium">{r.Alternative}</td>
+                          <td className="p-2">{r["D+"]?.toFixed(6)}</td>
+                          <td className="p-2">{r["D-"]?.toFixed(6)}</td>
+                          <td className="p-2">{r["Closeness"]?.toFixed(6)}</td>
+                          <td className="p-2">{r["Rank"]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-    st.markdown("#### Option A: Load images from URL (e.g., raw GitHub links)")
-    url_scatter = st.text_input("Scatter matrix image URL", placeholder="https://raw.githubusercontent.com/<user>/<repo>/<branch>/scatter_matrix.png")
-    url_corr    = st.text_input("Correlation heatmap image URL", placeholder="https://raw.githubusercontent.com/<user>/<repo>/<branch>/corr_matrix.png")
+                {/* Bar Chart */}
+                <div className="mt-6">
+                  <div className="flex items-center gap-2 mb-1 text-sm opacity-80"><BarChart3 size={16}/> Ranking — Bar</div>
+                  <div style={{ width: "100%", height: 340 }}>
+                    <ResponsiveContainer>
+                      <BarChart data={result.resRows.map(r=>({ name: r.Alternative, value: r.Closeness }))} margin={{ top: 10, right: 20, left: 0, bottom: 30 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" angle={-25} textAnchor="end" interval={0} height={50} />
+                        <YAxis />
+                        <Tooltip formatter={(v)=> Number(v).toFixed(6)} />
+                        <Bar dataKey="value">
+                          {result.resRows.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={colorPalette[index % colorPalette.length]} />
+                          ))}
+                          <LabelList dataKey="value" position="top" formatter={(v)=>Number(v).toFixed(3)} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
 
-    shown_any = False
-    if url_scatter:
-        st.image(url_scatter, caption="Scatter Matrix for Method Scores", use_container_width=True)
-        shown_any = True
-    if url_corr:
-        st.image(url_corr, caption="Correlation Heatmap of Method Scores", use_container_width=True)
-        shown_any = True
+                {/* Line Chart */}
+                <div className="mt-6">
+                  <div className="flex items-center gap-2 mb-1 text-sm opacity-80"><LineChartIcon size={16}/> Ranking — Line</div>
+                  <div style={{ width: "100%", height: 300 }}>
+                    <ResponsiveContainer>
+                      <LineChart data={result.resRows.map(r=>({ rank: r.Rank, value: r.Closeness, name: r.Alternative }))} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="rank" label={{ value: "Rank (1 = best)", position: "insideBottom", offset: -5 }} />
+                        <YAxis />
+                        <Tooltip formatter={(v)=> Number(v).toFixed(6)} labelFormatter={(l)=>`Rank ${l}`} />
+                        <Line type="monotone" dataKey="value" stroke="#4C78A8" dot />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-    st.markdown("#### Option B: Or upload the images")
-    up_scatter = st.file_uploader("Upload scatter matrix (.png/.jpg)", type=["png", "jpg", "jpeg"], key="up_scatter")
-    up_corr    = st.file_uploader("Upload correlation heatmap (.png/.jpg)", type=["png", "jpg", "jpeg"], key="up_corr")
+      {activeTab === "compare" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className={card}>
+            <div className={sectionTitle}>Load Images (URLs or Upload)</div>
+            <div className="space-y-3">
+              <input className="w-full rounded-lg bg-neutral-100 dark:bg-neutral-800 p-2" placeholder="Scatter matrix image URL (raw GitHub)" value={urlScatter} onChange={(e)=> setUrlScatter(e.target.value)} />
+              {urlScatter && (
+                <img src={urlScatter} alt="scatter" className="w-full rounded-xl border" />
+              )}
+              <input className="w-full rounded-lg bg-neutral-100 dark:bg-neutral-800 p-2" placeholder="Correlation heatmap image URL (raw GitHub)" value={urlCorr} onChange={(e)=> setUrlCorr(e.target.value)} />
+              {urlCorr && (
+                <img src={urlCorr} alt="corr" className="w-full rounded-xl border" />
+              )}
+              <p className="text-sm opacity-70 flex items-center gap-2"><ImageIcon size={16}/> Use raw GitHub links ending with .png/.jpg. Or serve from public hosting.</p>
+            </div>
+          </div>
 
-    if up_scatter is not None:
-        st.image(up_scatter, caption="Scatter Matrix for Method Scores (uploaded)", use_container_width=True)
-        shown_any = True
-    if up_corr is not None:
-        st.image(up_corr, caption="Correlation Heatmap of Method Scores (uploaded)", use_container_width=True)
-        shown_any = True
+          <div className={card}>
+            <div className={sectionTitle}>How to read the figures</div>
+            <ul className="list-disc pl-5 space-y-1 text-sm">
+              <li><b>Scatter matrix</b> shows pairwise score relationships (each dot = one alternative).</li>
+              <li><b>Correlation heatmap</b> highlights similarity of scores/rankings across methods (darker = stronger agreement).</li>
+              <li>Use these to validate whether SYAI trends align with or diverge from other methods.</li>
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-    if not shown_any:
-        # fallback to local files if present
-        scatter_path = Path("scatter_matrix.png")
-        corr_path = Path("corr_matrix.png")
-        if scatter_path.exists():
-            st.image(str(scatter_path), caption="Scatter Matrix for Method Scores", use_container_width=True)
-            shown_any = True
-        if corr_path.exists():
-            st.image(str(corr_path), caption="Correlation Heatmap of Method Scores", use_container_width=True)
-            shown_any = True
-        if not shown_any:
-            st.warning("Provide URLs or upload images to display the comparison visuals.")
-
-    st.markdown("""
-    **How to read this:**
-    - The **scatter matrix** shows pairwise score relationships (each dot = one alternative).
-    - The **correlation heatmap** highlights similarity of scores/rankings across methods
-      (darker cells = stronger agreement).
-    """)
