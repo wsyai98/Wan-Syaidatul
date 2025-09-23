@@ -1,10 +1,9 @@
-# app.py
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="SYAI-Rank (Web UI inside Streamlit)", layout="wide")
+st.set_page_config(page_title="SYAI-Rank (Web UI)", layout="wide")
 
-# Optional shell styling
+# Optional: soft grey+pink vibe for the Streamlit shell behind the UI
 st.markdown("""
 <style>
 .stApp { background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 120%) !important; }
@@ -14,448 +13,501 @@ st.markdown("""
 
 html = r"""
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SYAI-Rank</title>
-
-  <!-- React + ReactDOM (UMD) from jsDelivr (stable) -->
-  <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
-
-  <!-- PapaParse -->
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-
-  <!-- Recharts UMD -->
-  <script src="https://cdn.jsdelivr.net/npm/recharts@2.10.4/umd/Recharts.min.js"></script>
-
-  <!-- Basic CSS (grey + pink) -->
-  <style>
-    :root {
-      --bg-dark: #0b0b0f;
-      --card-dark: #0f1115;
-      --card-light: #ffffffcc;
-      --text-light: #f5f5f5;
-      --text-dark: #1f2937;
-      --pink: #ec4899;
-      --pink-700: #db2777;
-    }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
-    body {
-      color: var(--text-light);
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial;
-      background: linear-gradient(180deg, var(--bg-dark) 0%, var(--bg-dark) 35%, #ffe4e6 120%);
-    }
-    .container { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
-    .header { display:flex; align-items:center; justify-content:space-between; margin-bottom: 16px; }
-    .title { font-weight: 800; font-size: 28px; color: #fce7f3; }
-    .btn { display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius: 12px; border:1px solid var(--pink-700); background:var(--pink); color:white; cursor:pointer; }
-    .btn:hover { background: var(--pink-700); }
-    .toggle { padding:8px 12px; border-radius: 12px; border:1px solid #333; background:#111; color:#eee; cursor:pointer; }
-    .tabs { display:flex; gap:8px; margin: 12px 0; }
-    .tab { padding:10px 14px; border-radius: 12px; border:1px solid #333; background:#202329; color:#ddd; cursor:pointer; }
-    .tab.active { background: var(--pink); border-color: var(--pink-700); color:#fff; }
-    .grid { display:grid; gap:16px; grid-template-columns: 1fr; }
-    @media (min-width: 1024px) { .grid { grid-template-columns: 1fr 2fr; } }
-    .card { background: linear-gradient(180deg, #ffffffb3 0%, #ffffffcc 100%); color: var(--text-dark); border-radius: 16px; padding: 18px; border: 1px solid #fbcfe8; backdrop-filter: blur(6px); }
-    .card.dark { background: #0f1115b3; color: #e5e7eb; border-color: #262b35; }
-    .section-title { font-weight: 700; font-size: 18px; margin-bottom: 12px; color:#f9a8d4; }
-    .label { display:block; font-size: 12px; opacity:.8; margin-bottom: 4px; }
-    input[type="text"], input[type="number"], select {
-      width: 100%; padding:10px 12px; border-radius:10px; border:1px solid #ddd; background:#f8fafc; color:#111;
-    }
-    .dark input[type="text"], .dark input[type="number"], .dark select {
-      background:#1f2937; border-color:#374151; color:#e5e7eb;
-    }
-    .table-wrap { overflow:auto; max-height: 360px; }
-    table { width:100%; border-collapse: collapse; font-size: 14px; }
-    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
-    .dark th, .dark td { border-bottom-color: #2a2f38; }
-    .hint { font-size: 12px; opacity:.8; }
-    .row { display:flex; gap:12px; align-items:center; flex-wrap: wrap; }
-    .mt6 { margin-top: 24px; } .mb6 { margin-bottom: 24px; } .mt2 { margin-top: 8px; }
-    .w100 { width: 100%; }
-
-    /* error banner inside the iframe */
-    #err {
-      position: sticky; top: 0; z-index: 9999;
-      display: none; background: #7f1d1d; color: #fff; padding: 10px 12px; border-radius: 8px; margin: 8px 16px;
-      border: 1px solid #fecaca;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      white-space: pre-wrap;
-    }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>SYAI-Rank</title>
+<style>
+  :root{
+    --bg-dark:#0b0b0f;
+    --card-dark:#0f1115cc;
+    --card-light:#ffffffcc;
+    --text-light:#f5f5f5;
+    --text-dark:#1f2937;
+    --pink:#ec4899; --pink-700:#db2777;
+    --border-dark:#262b35; --border-light:#fbcfe8;
+    --muted:#9ca3af;
+  }
+  *{box-sizing:border-box} html,body{height:100%;margin:0}
+  body{
+    color:var(--text-light);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Cantarell,"Noto Sans","Helvetica Neue",Arial;
+    background:linear-gradient(180deg,var(--bg-dark) 0%,var(--bg-dark) 35%,#ffe4e6 120%);
+  }
+  .container{max-width:1200px;margin:24px auto;padding:0 16px}
+  .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  .title{font-weight:800;font-size:28px;color:#fce7f3}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid var(--pink-700);background:var(--pink);color:#fff;cursor:pointer}
+  .btn:hover{background:var(--pink-700)}
+  .toggle{padding:8px 12px;border-radius:12px;border:1px solid #333;background:#111;color:#eee;cursor:pointer}
+  .tabs{display:flex;gap:8px;margin:12px 0}
+  .tab{padding:10px 14px;border-radius:12px;border:1px solid #333;background:#202329;color:#ddd;cursor:pointer}
+  .tab.active{background:var(--pink);border-color:var(--pink-700);color:#fff}
+  .grid{display:grid;gap:16px;grid-template-columns:1fr}
+  @media (min-width:1024px){.grid{grid-template-columns:1fr 2fr}}
+  .card{background:var(--card-light);color:var(--text-dark);border-radius:16px;padding:18px;border:1px solid var(--border-light);backdrop-filter:blur(6px)}
+  .card.dark{background:var(--card-dark);color:#e5e7eb;border-color:var(--border-dark)}
+  .section-title{font-weight:700;font-size:18px;margin-bottom:12px;color:#f9a8d4}
+  .label{display:block;font-size:12px;opacity:.85;margin-bottom:4px}
+  input[type="text"],input[type="number"],select{
+    width:100%;padding:10px 12px;border-radius:10px;border:1px solid #ddd;background:#f8fafc;color:#111
+  }
+  .dark input[type="text"], .dark input[type="number"], .dark select{
+    background:#1f2937;border-color:#374151;color:#e5e7eb
+  }
+  .hint{font-size:12px;opacity:.8}
+  .table-wrap{overflow:auto;max-height:360px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e5e7eb}
+  .dark th,.dark td{border-bottom-color:#2a2f38}
+  .mt2{margin-top:8px}.mt4{margin-top:16px}.mt6{margin-top:24px}.mb2{margin-bottom:8px}
+  .w100{width:100%}
+  /* charts */
+  .chart{width:100%;height:340px;border:1px dashed #2a2f38;border-radius:12px;padding:8px}
+  .linechart{width:100%;height:300px;border:1px dashed #2a2f38;border-radius:12px;padding:8px}
+  #err{display:none;background:#7f1d1d;color:#fff;padding:10px 12px;border:1px solid #fecaca;border-radius:8px;margin-bottom:8px;white-space:pre-wrap}
+</style>
 </head>
 <body>
+<div class="container">
   <div id="err"></div>
-  <div id="root"></div>
 
-  <script>
-    // Small helper: show JS errors visibly rather than a blank page
-    function showError(msg) {
-      try {
-        const el = document.getElementById('err');
-        el.textContent = "Error: " + msg;
-        el.style.display = 'block';
-      } catch(_) {}
-      console.error(msg);
+  <div class="header">
+    <div class="title">SYAI-Rank</div>
+    <div class="row">
+      <a class="btn" id="downloadSample">⬇️ Sample CSV</a>
+      <button class="toggle" id="themeToggle">🌙 Dark</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" id="tabRank">SYAI Ranking</button>
+    <button class="tab" id="tabCompare">Comparison with Other Methods</button>
+  </div>
+
+  <div id="viewRank">
+    <div class="grid">
+      <!-- LEFT -->
+      <div>
+        <div class="card dark">
+          <div class="section-title">Step 1: Upload Decision Matrix</div>
+          <label for="csvFile" class="btn">📤 Choose CSV</label>
+          <input id="csvFile" type="file" accept=".csv" style="display:none"/>
+          <p class="hint mt2">First column must be <b>Alternative</b>.</p>
+        </div>
+
+        <div id="typesCard" class="card dark" style="display:none">
+          <div class="section-title">Step 2: Define Criteria Types</div>
+          <div id="typesGrid" class="row"></div>
+        </div>
+
+        <div id="weightsCard" class="card dark" style="display:none">
+          <div class="section-title">Step 3: Set Weights (raw; normalized on run)</div>
+          <div id="weightsGrid" class="row"></div>
+        </div>
+
+        <div id="betaCard" class="card dark" style="display:none">
+          <div class="section-title">Step 4: β (blend of D⁺ and D⁻)</div>
+          <input id="beta" type="range" min="0" max="1" step="0.01" value="0.5" class="w100"/>
+          <div class="hint mt2">β = <b id="betaVal">0.50</b></div>
+          <button class="btn mt4" id="runBtn">Run SYAI</button>
+        </div>
+      </div>
+
+      <!-- RIGHT -->
+      <div>
+        <div id="matrixCard" class="card" style="display:none">
+          <div class="section-title">Decision Matrix (first 10 rows)</div>
+          <div class="table-wrap"><table id="matrixTable"></table></div>
+        </div>
+
+        <div id="resultCard" class="card" style="display:none">
+          <div class="section-title">Final Ranking (SYAI)</div>
+          <div class="table-wrap"><table id="resultTable"></table></div>
+
+          <div class="mt6">
+            <div class="hint mb2">Ranking — Bar</div>
+            <div class="chart"><svg id="barSVG" width="100%" height="100%"></svg></div>
+          </div>
+
+          <div class="mt6">
+            <div class="hint mb2">Ranking — Line</div>
+            <div class="linechart"><svg id="lineSVG" width="100%" height="100%"></svg></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPARISON -->
+  <div id="viewCompare" style="display:none">
+    <div class="grid">
+      <div class="card dark">
+        <div class="section-title">Load Images (URLs or Upload)</div>
+        <div class="label">Scatter matrix image URL (raw GitHub/public)</div>
+        <input id="urlScatter" type="text" placeholder="https://..." />
+        <img id="imgScatter" class="mt2" style="display:none;width:100%;border-radius:12px;border:1px solid #2a2f38"/>
+        <div class="label mt2">Correlation heatmap image URL (raw GitHub/public)</div>
+        <input id="urlCorr" type="text" placeholder="https://..." />
+        <img id="imgCorr" class="mt2" style="display:none;width:100%;border-radius:12px;border:1px solid #2a2f38"/>
+        <p class="hint mt2">Use direct links that end with .png/.jpg (GitHub: “Download raw file”).</p>
+        <div class="mt4">
+          <div class="label">Or upload images</div>
+          <input id="upScatter" type="file" accept=".png,.jpg,.jpeg"/>
+          <input id="upCorr" class="mt2" type="file" accept=".png,.jpg,.jpeg"/>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">How to read the figures</div>
+        <ul>
+          <li><b>Scatter matrix</b> shows pairwise score relationships (each dot = one alternative).</li>
+          <li><b>Correlation heatmap</b> highlights similarity of scores/rankings across methods (darker = stronger agreement).</li>
+          <li>Use these to validate whether SYAI trends align with or diverge from other methods.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ---------- helpers ----------
+  const $ = (id)=> document.getElementById(id);
+  const show = (el, on=true)=> { el.style.display = on ? "" : "none"; };
+  const err = (msg)=>{ const e=$("err"); e.textContent="Error: "+msg; e.style.display="block"; };
+
+  // CSV parser supporting quoted fields
+  function parseCSVText(text){
+    const rows = [];
+    let i=0, cur="", inQuotes=false, row=[];
+    const pushCell=()=>{ row.push(cur); cur=""; };
+    const pushRow=()=>{ rows.push(row); row=[]; };
+    while(i<text.length){
+      const ch=text[i];
+      if(inQuotes){
+        if(ch==='\"'){
+          if(text[i+1]==='\"'){ cur+='\"'; i++; } else { inQuotes=false; }
+        } else { cur+=ch; }
+      }else{
+        if(ch==='\"'){ inQuotes=true; }
+        else if(ch===','){ pushCell(); }
+        else if(ch==='\n'){ pushCell(); pushRow(); }
+        else if(ch==='\r'){ /* ignore */ }
+        else{ cur+=ch; }
+      }
+      i++;
     }
+    // last cell
+    pushCell(); if(row.length>1 || row[0] !== "") pushRow();
+    return rows;
+  }
 
-    // Wait for libs to be available
-    function waitForLibs(tries=80) {
-      return new Promise((resolve, reject) => {
-        (function check() {
-          if (window.React && window.ReactDOM && window.Papa && window.Recharts) return resolve();
-          if (--tries <= 0) return reject(new Error("Libraries failed to load. (React/Papa/Recharts)"));
-          setTimeout(check, 100);
-        })();
-      });
-    }
-
-    (async function boot() {
-      try {
-        await waitForLibs();
-
-        const { useState, useMemo, useEffect } = React;
-        const {
-          ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-          Tooltip, LabelList, LineChart, Line, Cell
-        } = Recharts;
-
-        const C = 0.01;
-        const sampleCSV =
-`Alternative,Cost,Quality,Delivery Time,Temperature
+  const sampleCSV = `Alternative,Cost,Quality,Delivery Time,Temperature
 A1,200,8,4,30
 A2,250,7,5,60
 A3,300,9,6,85
 `;
 
-        function parseCSV(file, onDone) {
-          Papa.parse(file, {
-            header: true, skipEmptyLines: true,
-            complete: (res) => onDone({ columns: res.meta.fields || [], rows: res.data || [] }),
-          });
+  $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(sampleCSV);
+  $("downloadSample").download = "sample.csv";
+
+  // theme toggle (just a label flip for this embed)
+  let dark=true;
+  $("themeToggle").onclick=()=>{ dark=!dark; $("themeToggle").textContent = dark? "🌙 Dark" : "☀️ Light"; };
+
+  // tabs
+  $("tabRank").onclick=()=>{ $("tabRank").classList.add("active"); $("tabCompare").classList.remove("active"); show($("viewRank"),true); show($("viewCompare"),false); };
+  $("tabCompare").onclick=()=>{ $("tabCompare").classList.add("active"); $("tabRank").classList.remove("active"); show($("viewRank"),false); show($("viewCompare"),true); };
+
+  // comparison images
+  $("urlScatter").oninput = ()=>{ const v=$("urlScatter").value.trim(); if(v){ $("imgScatter").src=v; show($("imgScatter"),true);} else show($("imgScatter"),false); };
+  $("urlCorr").oninput = ()=>{ const v=$("urlCorr").value.trim(); if(v){ $("imgCorr").src=v; show($("imgCorr"),true);} else show($("imgCorr"),false); };
+  $("upScatter").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $("imgScatter").src=r.result; show($("imgScatter"),true); }; r.readAsDataURL(f); };
+  $("upCorr").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $("imgCorr").src=r.result; show($("imgCorr"),true); }; r.readAsDataURL(f); };
+
+  // state
+  let columns=[], rows=[], crits=[], types={}, ideals={}, weights={}, beta=0.5;
+
+  $("beta").oninput = ()=>{ beta = parseFloat($("beta").value); $("betaVal").textContent = beta.toFixed(2); };
+
+  // upload
+  $("csvFile").onchange = (e)=>{
+    const f = e.target.files[0]; if(!f) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{
+        const txt = String(reader.result);
+        const arr = parseCSVText(txt);
+        if(!arr.length) throw new Error("Empty CSV");
+        columns = arr[0];
+        const colIdx = Object.fromEntries(columns.map((c,i)=>[c,i]));
+        if(columns[0] !== "Alternative"){
+          // force Alternative to be first if present elsewhere
+          const altIdx = columns.indexOf("Alternative");
+          if(altIdx > 0){
+            columns.splice(altIdx,1);
+            columns.unshift("Alternative");
+          }
         }
+        crits = columns.filter(c=>c!=="Alternative");
+        rows = arr.slice(1).filter(r=>r.length>=columns.length).map(r=>{
+          const obj={};
+          columns.forEach((c,i)=> obj[c]=r[i] ?? "");
+          return obj;
+        });
 
-        function computeSYAI({ rows, columns, types, ideals, rawWeights, beta }) {
-          const crits = columns.filter(c => c !== "Alternative");
-          const m = crits.length;
+        // defaults for UI
+        types = Object.fromEntries(crits.map(c=>[c,"Benefit"]));
+        ideals = Object.fromEntries(crits.map(c=>[c,""]));
+        weights = Object.fromEntries(crits.map(c=>[c,1]));
 
-          const alts = Array.from(new Set(rows.map(r => String(r["Alternative"])).filter(Boolean)));
+        // build UI
+        renderMatrix();
+        renderTypes();
+        renderWeights();
+        show($("matrixCard"),true);
+        show($("typesCard"),true);
+        show($("weightsCard"),true);
+        show($("betaCard"),true);
+        show($("resultCard"),false);
+      }catch(ex){ err(ex.message || String(ex)); }
+    };
+    reader.readAsText(f);
+  };
 
-          const X = {}; alts.forEach(a => X[a] = {});
-          rows.forEach(r => {
-            const a = String(r["Alternative"]);
-            crits.forEach(c => {
-              const v = parseFloat(String(r[c]).replace(/,/g, ""));
-              X[a][c] = Number.isFinite(v) ? v : NaN;
-            });
-          });
+  function renderMatrix(){
+    const tb = $("matrixTable");
+    tb.innerHTML = "";
+    const thead = document.createElement("thead"); const trh = document.createElement("tr");
+    columns.forEach(c=>{ const th=document.createElement("th"); th.textContent=c; trh.appendChild(th); });
+    thead.appendChild(trh); tb.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    rows.slice(0,10).forEach(r=>{
+      const tr=document.createElement("tr");
+      columns.forEach(c=>{ const td=document.createElement("td"); td.textContent=String(r[c] ?? ""); tr.appendChild(td); });
+      tbody.appendChild(tr);
+    });
+    tb.appendChild(tbody);
+  }
 
-          const N = {}; alts.forEach(a => N[a] = {});
-          crits.forEach(c => {
-            const colVals = alts.map(a => X[a][c]);
-            const max = Math.max(...colVals);
-            const min = Math.min(...colVals);
-            const R = max - min;
-            let xStar;
-            if (types[c] === "Benefit") xStar = max;
-            else if (types[c] === "Cost") xStar = min;
-            else {
-              const g = parseFloat(ideals[c]);
-              xStar = Number.isFinite(g) ? g : colVals.reduce((s,v)=>s+(Number.isFinite(v)?v:0),0)/colVals.length;
-            }
-            if (Math.abs(R) < 1e-12) {
-              alts.forEach(a => N[a][c] = 1.0);
-            } else {
-              alts.forEach(a => {
-                const x = X[a][c];
-                const norm = C + (1 - C) * (1 - Math.abs(x - xStar)/R);
-                N[a][c] = Math.max(C, Math.min(1, norm));
-              });
-            }
-          });
+  function renderTypes(){
+    const wrap = $("typesGrid"); wrap.innerHTML="";
+    crits.forEach(c=>{
+      const box = document.createElement("div"); box.style.minWidth="240px";
+      const lab = document.createElement("div"); lab.className="label"; lab.textContent=c; box.appendChild(lab);
 
-          const w = {}; let sumw = 0;
-          crits.forEach(c => {
-            const v = parseFloat(String(rawWeights[c] ?? 0));
-            const safe = Number.isFinite(v) ? Math.max(0, v) : 0;
-            w[c] = safe; sumw += safe;
-          });
-          if (sumw <= 0) crits.forEach(c => w[c] = 1/m); else crits.forEach(c => w[c] = w[c]/sumw);
+      const sel = document.createElement("select");
+      ["Benefit","Cost","Ideal (Goal)"].forEach(v=>{ const o=document.createElement("option"); o.textContent=v; sel.appendChild(o); });
+      sel.value = types[c];
+      sel.onchange = ()=>{ types[c]=sel.value; renderTypes(); };
+      box.appendChild(sel);
 
-          const W = {}; alts.forEach(a => W[a] = {});
-          const A_plus = {}, A_minus = {};
-          crits.forEach(c => {
-            let max = -Infinity, min = Infinity;
-            alts.forEach(a => {
-              W[a][c] = N[a][c] * w[c];
-              if (W[a][c] > max) max = W[a][c];
-              if (W[a][c] < min) min = W[a][c];
-            });
-            A_plus[c] = max; A_minus[c] = min;
-          });
-
-          const rowsOut = alts.map(a => {
-            let Dp = 0, Dm = 0;
-            crits.forEach(c => { Dp += Math.abs(W[a][c] - A_plus[c]); Dm += Math.abs(W[a][c] - A_minus[c]); });
-            const denom = beta*Dp + (1-beta)*Dm || Number.EPSILON;
-            const closeness = ((1-beta) * Dm) / denom;
-            return { Alternative: a, Dp, Dm, Closeness: closeness };
-          });
-
-          rowsOut.sort((a,b) => b.Closeness - a.Closeness);
-          rowsOut.forEach((r,i,arr) => {
-            r.Rank = arr.slice(0,i).filter(x => x.Closeness > r.Closeness).length + 1;
-          });
-
-          return { resRows: rowsOut };
-        }
-
-        function App() {
-          const [isDark, setIsDark] = useState(true);
-          useEffect(() => { document.documentElement.classList.toggle('dark', isDark); }, [isDark]);
-
-          const [tab, setTab] = useState("rank");
-          const [data, setData] = useState({ columns: [], rows: [] });
-          const [types, setTypes] = useState({});
-          const [ideals, setIdeals] = useState({});
-          const [weights, setWeights] = useState({});
-          const [beta, setBeta] = useState(0.5);
-
-          const [urlScatter, setUrlScatter] = useState("");
-          const [urlCorr, setUrlCorr] = useState("");
-
-          const onCSVLoaded = ({ columns, rows }) => {
-            if (!columns?.length) return;
-            let cols = columns;
-            if (cols[0] !== "Alternative") {
-              cols = ["Alternative", ...cols.filter(c => c !== "Alternative")];
-            }
-            const crits = cols.filter(c => c !== "Alternative");
-            const t = {...types}, w = {...weights}, g = {...ideals};
-            crits.forEach(c => {
-              if (!t[c]) t[c] = "Benefit";
-              if (!(c in w)) w[c] = 1;
-              if (!(c in g)) g[c] = "";
-            });
-            setTypes(t); setWeights(w); setIdeals(g);
-            setData({ columns: cols, rows });
-          };
-
-          const result = useMemo(() => {
-            if (!data.columns.length || !data.rows.length) return null;
-            const crits = data.columns.filter(c=>c!=="Alternative");
-            if (!crits.length) return null;
-            return computeSYAI({ rows: data.rows, columns: data.columns, types, ideals, rawWeights: weights, beta });
-          }, [data, types, ideals, weights, beta]);
-
-          const neutral = ["#64748b","#94a3b8","#cbd5e1","#475569","#334155","#1f2937","#9ca3af","#6b7280","#a3a3a3","#737373"];
-
-          return React.createElement("div", { className:"container" },
-            React.createElement("div", { className:"header" },
-              React.createElement("div", { className:"title" }, "SYAI-Rank"),
-              React.createElement("div", { className:"row" },
-                React.createElement("a", {
-                  className: "btn",
-                  href: "data:text/csv;charset=utf-8," + encodeURIComponent(
-                    "Alternative,Cost,Quality,Delivery Time,Temperature\nA1,200,8,4,30\nA2,250,7,5,60\nA3,300,9,6,85\n"
-                  ),
-                  download: "sample.csv"
-                }, "⬇️ Sample CSV"),
-                React.createElement("button", { className:"toggle", onClick:()=>setIsDark(!isDark) },
-                  isDark ? "🌙 Dark" : "☀️ Light"
-                )
-              )
-            ),
-
-            React.createElement("div", { className:"tabs" },
-              React.createElement("button", { className: "tab " + (tab==="rank"?"active":""), onClick:()=>setTab("rank") }, "SYAI Ranking"),
-              React.createElement("button", { className: "tab " + (tab==="compare"?"active":""), onClick:()=>setTab("compare") }, "Comparison with Other Methods"),
-            ),
-
-            tab === "rank" && React.createElement("div", { className:"grid" },
-              // Left
-              React.createElement("div", null,
-                React.createElement("div", { className:"card dark" },
-                  React.createElement("div", { className:"section-title" }, "Step 1: Upload Decision Matrix"),
-                  React.createElement("label", { className:"btn", htmlFor:"csvFile" }, "📤 Choose CSV"),
-                  React.createElement("input", { id:"csvFile", type:"file", accept:".csv", style:{display:"none"},
-                    onChange:(e)=>{ const f = e.target.files?.[0]; if (f) parseCSV(f, onCSVLoaded); } }),
-                  React.createElement("p", { className:"hint mt2" }, "First column must be ", React.createElement("b", null, "Alternative"), ".")
-                ),
-
-                !!data.columns.length && React.createElement("div", { className:"card dark" },
-                  React.createElement("div", { className:"section-title" }, "Step 2: Define Criteria Types"),
-                  React.createElement("div", { className:"row" },
-                    data.columns.filter(c=>c!=="Alternative").map((c)=>
-                      React.createElement("div", { key:c, style:{minWidth:240}},
-                        React.createElement("div", { className:"label" }, c),
-                        React.createElement("select", {
-                          value: types[c] || "Benefit",
-                          onChange:(e)=> setTypes({...types, [c]: e.target.value})
-                        },
-                          React.createElement("option", null, "Benefit"),
-                          React.createElement("option", null, "Cost"),
-                          React.createElement("option", null, "Ideal (Goal)")
-                        ),
-                        (types[c]==="Ideal (Goal)") && React.createElement("input", {
-                          className:"mt2", type:"number", step:"any", placeholder:"Goal value",
-                          value: String(ideals[c] ?? ""),
-                          onChange:(e)=> setIdeals({...ideals, [c]: e.target.value})
-                        })
-                      )
-                    )
-                  )
-                ),
-
-                !!data.columns.length && React.createElement("div", { className:"card dark" },
-                  React.createElement("div", { className:"section-title" }, "Step 3: Set Weights (raw; normalized on run)"),
-                  React.createElement("div", { className:"row" },
-                    data.columns.filter(c=>c!=="Alternative").map((c)=>
-                      React.createElement("div", { key:c, style:{minWidth:160}},
-                        React.createElement("div", { className:"label" }, "w(", c, ")"),
-                        React.createElement("input", {
-                          type:"number", step:"0.001", min:"0",
-                          value: String(weights[c] ?? 0),
-                          onChange:(e)=> setWeights({...weights, [c]: e.target.value})
-                        })
-                      )
-                    )
-                  )
-                ),
-
-                !!data.columns.length && React.createElement("div", { className:"card dark" },
-                  React.createElement("div", { className:"section-title" }, "Step 4: β (blend of D⁺ and D⁻)"),
-                  React.createElement("input", { type:"range", min:0, max:1, step:0.01, value:beta,
-                    onChange:(e)=> setBeta(parseFloat(e.target.value)), className:"w100" }),
-                  React.createElement("div", { className:"hint mt2" }, "β = ", React.createElement("b", null, beta.toFixed(2)))
-                )
-              ),
-
-              // Right
-              React.createElement("div", null,
-                !!data.columns.length && React.createElement("div", { className:"card" },
-                  React.createElement("div", { className:"section-title" }, "Decision Matrix (first 10 rows)"),
-                  React.createElement("div", { className:"table-wrap" },
-                    React.createElement("table", null,
-                      React.createElement("thead", null,
-                        React.createElement("tr", null,
-                          data.columns.map(c => React.createElement("th", { key:c }, c))
-                        )
-                      ),
-                      React.createElement("tbody", null,
-                        (data.rows || []).slice(0,10).map((r, i) =>
-                          React.createElement("tr", { key:i },
-                            data.columns.map(c => React.createElement("td", { key:c }, String(r[c] ?? "")))
-                          )
-                        )
-                      )
-                    )
-                  )
-                ),
-
-                !!result && React.createElement("div", { className:"card" },
-                  React.createElement("div", { className:"section-title" }, "Final Ranking (SYAI)"),
-                  React.createElement("div", { className:"table-wrap" },
-                    React.createElement("table", null,
-                      React.createElement("thead", null,
-                        React.createElement("tr", null,
-                          React.createElement("th", null, "Alternative"),
-                          React.createElement("th", null, "D+"),
-                          React.createElement("th", null, "D-"),
-                          React.createElement("th", null, "Closeness"),
-                          React.createElement("th", null, "Rank")
-                        )
-                      ),
-                      React.createElement("tbody", null,
-                        result.resRows.map(r =>
-                          React.createElement("tr", { key:r.Alternative },
-                            React.createElement("td", null, r.Alternative),
-                            React.createElement("td", null, r.Dp.toFixed(6)),
-                            React.createElement("td", null, r.Dm.toFixed(6)),
-                            React.createElement("td", null, r.Closeness.toFixed(6)),
-                            React.createElement("td", null, r.Rank)
-                          )
-                        )
-                      )
-                    )
-                  ),
-
-                  React.createElement("div", { className:"mt6" },
-                    React.createElement("div", { className:"hint mb6" }, "Ranking — Bar"),
-                    React.createElement("div", { style:{ width:"100%", height:"340px" } },
-                      React.createElement(ResponsiveContainer, null,
-                        React.createElement(BarChart, { data: result.resRows.map(r=>({ name:r.Alternative, value:r.Closeness })) , margin:{ top:10, right:20, left:0, bottom:30 } },
-                          React.createElement(CartesianGrid, { strokeDasharray:"3 3" }),
-                          React.createElement(XAxis, { dataKey:"name", angle:-25, textAnchor:"end", interval:0, height:50 }),
-                          React.createElement(YAxis, null),
-                          React.createElement(Tooltip, { formatter: (v)=> Number(v).toFixed(6) }),
-                          React.createElement(Bar, { dataKey:"value" },
-                            result.resRows.map((_, i) =>
-                              React.createElement(Cell, { key:i, fill: ["#64748b","#94a3b8","#cbd5e1","#475569","#334155","#1f2937","#9ca3af","#6b7280","#a3a3a3","#737373"][i%10] })
-                            ),
-                            React.createElement(LabelList, { dataKey:"value", position:"top", formatter:(v)=> Number(v).toFixed(3) })
-                          )
-                        )
-                      )
-                    )
-                  ),
-
-                  React.createElement("div", { className:"mt6" },
-                    React.createElement("div", { className:"hint mb6" }, "Ranking — Line"),
-                    React.createElement("div", { style:{ width:"100%", height:"300px" } },
-                      React.createElement(ResponsiveContainer, null,
-                        React.createElement(LineChart, { data: result.resRows.map(r=>({ rank:r.Rank, value:r.Closeness, name:r.Alternative })) , margin:{ top:10, right:20, left:0, bottom:10 } },
-                          React.createElement(CartesianGrid, { strokeDasharray:"3 3" }),
-                          React.createElement(XAxis, { dataKey:"rank" }),
-                          React.createElement(YAxis, null),
-                          React.createElement(Tooltip, { formatter: (v)=> Number(v).toFixed(6), labelFormatter:(l)=> "Rank " + l }),
-                          React.createElement(Line, { type:"monotone", dataKey:"value", stroke:"#64748b", dot:true })
-                        )
-                      )
-                    )
-                  )
-                )
-              )
-            ),
-
-            tab === "compare" && React.createElement("div", { className:"grid" },
-              React.createElement("div", { className:"card dark" },
-                React.createElement("div", { className:"section-title" }, "Load Images (URLs)"),
-                React.createElement("div", { className:"label" }, "Scatter matrix image URL (raw GitHub/public)"),
-                React.createElement("input", { type:"text", value: urlScatter, onChange:(e)=> setUrlScatter(e.target.value) }),
-                urlScatter && React.createElement("img", { src:urlScatter, alt:"scatter", style:{width:"100%", borderRadius:12, border:"1px solid #2a2f38", marginTop:8} }),
-                React.createElement("div", { className:"label mt2" }, "Correlation heatmap image URL (raw GitHub/public)"),
-                React.createElement("input", { type:"text", value: urlCorr, onChange:(e)=> setUrlCorr(e.target.value) }),
-                urlCorr && React.createElement("img", { src:urlCorr, alt:"corr", style:{width:"100%", borderRadius:12, border:"1px solid #2a2f38", marginTop:8} }),
-                React.createElement("p", { className:"hint mt2" }, "Use direct links that end with .png/.jpg (GitHub: click “Download raw file”).")
-              ),
-
-              React.createElement("div", { className:"card" },
-                React.createElement("div", { className:"section-title" }, "How to read the figures"),
-                React.createElement("ul", null,
-                  React.createElement("li", null, React.createElement("b", null, "Scatter matrix"), " shows pairwise score relationships (each dot = one alternative)."),
-                  React.createElement("li", null, React.createElement("b", null, "Correlation heatmap"), " highlights similarity of scores/rankings across methods (darker = stronger agreement)."),
-                  React.createElement("li", null, "Use these to validate whether SYAI trends align with or diverge from other methods.")
-                )
-              )
-            )
-          );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById("root"));
-        root.render(React.createElement(App));
-      } catch (err) {
-        showError(err && err.message ? err.message : String(err));
+      if(types[c]==="Ideal (Goal)"){
+        const inp=document.createElement("input"); inp.className="mt2"; inp.type="number"; inp.step="any"; inp.placeholder="Goal value";
+        inp.value = ideals[c];
+        inp.oninput = ()=> ideals[c] = inp.value;
+        box.appendChild(inp);
       }
-    })();
-  </script>
+      wrap.appendChild(box);
+    });
+  }
+
+  function renderWeights(){
+    const wrap = $("weightsGrid"); wrap.innerHTML="";
+    crits.forEach(c=>{
+      const box = document.createElement("div"); box.style.minWidth="160px";
+      const lab = document.createElement("div"); lab.className="label"; lab.textContent = `w(${c})`; box.appendChild(lab);
+      const inp=document.createElement("input"); inp.type="number"; inp.step="0.001"; inp.min="0"; inp.value = weights[c];
+      inp.oninput = ()=> weights[c] = inp.value;
+      box.appendChild(inp);
+      wrap.appendChild(box);
+    });
+  }
+
+  // --- SYAI core in JS ---
+  const C = 0.01;
+  function toNum(v){ const x=parseFloat(String(v).replace(/,/g,"")); return isFinite(x)?x:NaN; }
+
+  function normalizeColumn(vals, ctype, goal){
+    const max = Math.max(...vals); const min = Math.min(...vals); const R = max - min;
+    let xStar;
+    if(ctype==="Benefit") xStar = max;
+    else if(ctype==="Cost") xStar = min;
+    else {
+      const g=parseFloat(goal); xStar = isFinite(g)?g:(vals.reduce((s,v)=>s+(isFinite(v)?v:0),0)/vals.length);
+    }
+    if(Math.abs(R)<1e-12) return vals.map(_=>1.0);
+    return vals.map(x=> Math.max(C, Math.min(1, C + (1-C)*(1-Math.abs(x-xStar)/R))));
+  }
+
+  function compute(){
+    if(!columns.length || !rows.length){ err("No data"); return null; }
+    const X = rows.map(r=> Object.fromEntries(crits.map(c=>[c,toNum(r[c])])) );
+    const N = {};
+    crits.forEach(c=>{
+      const series = X.map(row=>row[c]);
+      N[c] = normalizeColumn(series, types[c], ideals[c]);
+    });
+    // weights normalize
+    let sumw = 0; const w={};
+    crits.forEach(c=>{ const v=Math.max(0, parseFloat(weights[c]||0)); w[c]= isFinite(v)?v:0; sumw += w[c]; });
+    if(sumw<=0) crits.forEach(c=> w[c]=1/crits.length); else crits.forEach(c=> w[c]/=sumw);
+
+    // weighted matrix
+    const W = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, N[c][i]*w[c]])) );
+    // A+ A-
+    const Aplus={}, Aminus={};
+    crits.forEach(c=>{
+      let mx=-Infinity, mn=Infinity;
+      W.forEach(row=>{ if(row[c]>mx) mx=row[c]; if(row[c]<mn) mn=row[c]; });
+      Aplus[c]=mx; Aminus[c]=mn;
+    });
+    // distances & closeness
+    const betaVal = beta;
+    const res = rows.map((r,i)=>{
+      let Dp=0, Dm=0;
+      crits.forEach(c=>{ Dp += Math.abs(W[i][c]-Aplus[c]); Dm += Math.abs(W[i][c]-Aminus[c]); });
+      const denom = betaVal*Dp + (1-betaVal)*Dm || Number.EPSILON;
+      const Close = ((1-betaVal)*Dm)/denom;
+      return { Alternative: String(r["Alternative"]), Dp, Dm, Close };
+    });
+    res.sort((a,b)=> b.Close - a.Close);
+    res.forEach((r,i,arr)=> r.Rank = arr.slice(0,i).filter(x=>x.Close>r.Close).length + 1);
+    return res;
+  }
+
+  $("runBtn").onclick = ()=>{
+    const result = compute(); if(!result) return;
+    // table
+    const tb = $("resultTable"); tb.innerHTML="";
+    const thead=document.createElement("thead"); const trh=document.createElement("tr");
+    ["Alternative","D+","D-","Closeness","Rank"].forEach(h=>{ const th=document.createElement("th"); th.textContent=h; trh.appendChild(th); });
+    thead.appendChild(trh); tb.appendChild(thead);
+    const tbody=document.createElement("tbody");
+    result.forEach(r=>{
+      const tr=document.createElement("tr");
+      const cells=[r.Alternative, r.Dp.toFixed(6), r.Dm.toFixed(6), r.Close.toFixed(6), r.Rank];
+      cells.forEach(v=>{ const td=document.createElement("td"); td.textContent=String(v); tr.appendChild(td); });
+      tbody.appendChild(tr);
+    });
+    tb.appendChild(tbody);
+    show($("resultCard"),true);
+
+    drawBar(result.map(r=>({name:r.Alternative, value:r.Close})));
+    drawLine(result.map(r=>({rank:r.Rank, value:r.Close, name:r.Alternative})));
+  };
+
+  // ------- Simple SVG Charts (neutral palette) -------
+  const NEUTRAL = ["#64748b","#94a3b8","#cbd5e1","#475569","#334155","#1f2937","#9ca3af","#6b7280","#a3a3a3","#737373"];
+
+  function drawBar(data){
+    const svg = $("barSVG"); while(svg.firstChild) svg.removeChild(svg.firstChild);
+    const rect = svg.getBoundingClientRect(); const W = rect.width||800, H = rect.height||300, padL=50,padR=20,padT=10,padB=40;
+    const max = Math.max(...data.map(d=>d.value)) || 1;
+    const barW = (W - padL - padR) / data.length * 0.8;
+    data.forEach((d,i)=>{
+      const x = padL + i*(W - padL - padR)/data.length + ((W - padL - padR)/data.length - barW)/2;
+      const h = (H - padT - padB) * (d.value/max);
+      const y = H - padB - h;
+      const rectEl = document.createElementNS("http://www.w3.org/2000/svg","rect");
+      rectEl.setAttribute("x", x); rectEl.setAttribute("y", y);
+      rectEl.setAttribute("width", barW); rectEl.setAttribute("height", h);
+      rectEl.setAttribute("fill", NEUTRAL[i%NEUTRAL.length]);
+      svg.appendChild(rectEl);
+
+      const txt = document.createElementNS("http://www.w3.org/2000/svg","text");
+      txt.setAttribute("x", x + barW/2); txt.setAttribute("y", y - 4);
+      txt.setAttribute("text-anchor","middle"); txt.setAttribute("font-size","12");
+      txt.setAttribute("fill","#e5e7eb"); txt.textContent = (d.value).toFixed(3);
+      svg.appendChild(txt);
+
+      const lbl = document.createElementNS("http://www.w3.org/2000/svg","text");
+      lbl.setAttribute("x", x + barW/2); lbl.setAttribute("y", H - 10);
+      lbl.setAttribute("text-anchor","middle"); lbl.setAttribute("font-size","12");
+      lbl.setAttribute("fill","#e5e7eb"); lbl.textContent = d.name;
+      svg.appendChild(lbl);
+    });
+
+    // y-axis ticks
+    for(let t=0;t<=5;t++){
+      const val = max*t/5;
+      const y = H - padB - (H - padT - padB)*(val/max);
+      const line = document.createElementNS("http://www.w3.org/2000/svg","line");
+      line.setAttribute("x1", padL-6); line.setAttribute("x2", W-padR);
+      line.setAttribute("y1", y); line.setAttribute("y2", y);
+      line.setAttribute("stroke", "#374151"); line.setAttribute("stroke-dasharray","3 3");
+      svg.appendChild(line);
+      const tEl = document.createElementNS("http://www.w3.org/2000/svg","text");
+      tEl.setAttribute("x", padL-10); tEl.setAttribute("y", y+4);
+      tEl.setAttribute("text-anchor","end"); tEl.setAttribute("font-size","12");
+      tEl.setAttribute("fill","#e5e7eb"); tEl.textContent = val.toFixed(2);
+      svg.appendChild(tEl);
+    }
+  }
+
+  function drawLine(data){
+    const svg = $("lineSVG"); while(svg.firstChild) svg.removeChild(svg.firstChild);
+    const rect = svg.getBoundingClientRect(); const W = rect.width||800, H = rect.height||280, padL=50,padR=20,padT=10,padB=30;
+    const maxY = Math.max(...data.map(d=>d.value))||1, minX = 1, maxX = Math.max(...data.map(d=>d.rank))||1;
+
+    const scaleX = (r)=> padL + (W-padL-padR) * ( (r-minX) / (maxX-minX||1) );
+    const scaleY = (v)=> H - padB - (H-padT-padB) * (v/maxY);
+
+    // grid
+    for(let t=0;t<=5;t++){
+      const val = maxY*t/5;
+      const y = H - padB - (H - padT - padB)*(val/maxY);
+      const line = document.createElementNS("http://www.w3.org/2000/svg","line");
+      line.setAttribute("x1", padL-6); line.setAttribute("x2", W-padR);
+      line.setAttribute("y1", y); line.setAttribute("y2", y);
+      line.setAttribute("stroke", "#374151"); line.setAttribute("stroke-dasharray","3 3");
+      svg.appendChild(line);
+      const tEl = document.createElementNS("http://www.w3.org/2000/svg","text");
+      tEl.setAttribute("x", padL-10); tEl.setAttribute("y", y+4);
+      tEl.setAttribute("text-anchor","end"); tEl.setAttribute("font-size","12");
+      tEl.setAttribute("fill","#e5e7eb"); tEl.textContent = val.toFixed(2);
+      svg.appendChild(tEl);
+    }
+
+    // path
+    const path = document.createElementNS("http://www.w3.org/2000/svg","path");
+    let d = "";
+    data.sort((a,b)=> a.rank - b.rank).forEach((p,idx)=>{
+      const x=scaleX(p.rank), y=scaleY(p.value);
+      d += (idx===0? "M":"L") + x + " " + y + " ";
+    });
+    path.setAttribute("d", d.trim());
+    path.setAttribute("fill","none");
+    path.setAttribute("stroke","#64748b");
+    path.setAttribute("stroke-width","2");
+    svg.appendChild(path);
+
+    // points + labels
+    data.forEach((p)=>{
+      const x=scaleX(p.rank), y=scaleY(p.value);
+      const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
+      c.setAttribute("cx",x); c.setAttribute("cy",y); c.setAttribute("r","4"); c.setAttribute("fill","#94a3b8");
+      svg.appendChild(c);
+      const t = document.createElementNS("http://www.w3.org/2000/svg","text");
+      t.setAttribute("x",x+6); t.setAttribute("y",y-6); t.setAttribute("font-size","12"); t.setAttribute("fill","#e5e7eb");
+      t.textContent = p.value.toFixed(3); svg.appendChild(t);
+    });
+
+    // x labels
+    for(let r=1;r<=maxX;r++){
+      const x=scaleX(r);
+      const t = document.createElementNS("http://www.w3.org/2000/svg","text");
+      t.setAttribute("x",x); t.setAttribute("y",H-8); t.setAttribute("text-anchor","middle"); t.setAttribute("font-size","12"); t.setAttribute("fill","#e5e7eb");
+      t.textContent = r; svg.appendChild(t);
+    }
+  }
+})();
+</script>
 </body>
 </html>
 """
 
-# Render the embedded React app inside Streamlit
-components.html(html, height=2000, scrolling=True)
+components.html(html, height=2100, scrolling=True)
