@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 st.set_page_config(page_title="SYAI-Rank", layout="wide")
-st.title("SYAI-Rank (C=0.01, L1 distances, equal weights)")
+st.title("SYAI-Rank (C=0.01, L1 distances, customizable weights)")
 
 C = 0.01  # normalization floor
 
@@ -25,10 +25,11 @@ def normalize_column(x: pd.Series, ctype: str, goal_val: float | None) -> pd.Ser
         norm = norm.clip(lower=C, upper=1.0)
     return norm
 
-def compute_syai_equal_weights(df: pd.DataFrame,
-                               types: list[str],
-                               ideals: dict[str, float],
-                               beta: float):
+def compute_syai(df: pd.DataFrame,
+                 types: list[str],
+                 ideals: dict[str, float],
+                 weights: pd.Series,
+                 beta: float):
     # Ensure numeric
     X = df.apply(pd.to_numeric, errors="coerce")
     if X.isna().any().any():
@@ -39,9 +40,8 @@ def compute_syai_equal_weights(df: pd.DataFrame,
     for j, col in enumerate(X.columns):
         N[col] = normalize_column(X[col], types[j], ideals.get(col))
 
-    # 2) Equal weights
-    m = X.shape[1]
-    w = pd.Series([1.0/m] * m, index=X.columns, dtype=float)
+    # 2) Weights (already normalized to sum=1)
+    w = weights.reindex(X.columns).astype(float)
 
     # 3) Weighted matrix
     W = N.mul(w, axis=1)
@@ -63,7 +63,16 @@ def compute_syai_equal_weights(df: pd.DataFrame,
     res["Rank"] = res["Closeness Score"].rank(ascending=False, method="min").astype(int)
     res = res.sort_values("Closeness Score", ascending=False)
 
-    return res, N, W, A_plus, A_minus
+    return res, N, W, A_plus, A_minus, w
+
+def normalize_weights(raw_w: pd.Series) -> pd.Series:
+    raw_w = raw_w.fillna(0).astype(float)
+    total = raw_w.sum()
+    if total <= 0:
+        # fallback to equal weights if all zeros
+        st.warning("All weights are zero; defaulting to equal weights.")
+        return pd.Series([1.0/len(raw_w)]*len(raw_w), index=raw_w.index, dtype=float)
+    return raw_w / total
 
 # ---------- Sidebar: sample & test ----------
 with st.sidebar:
@@ -109,7 +118,6 @@ if df is not None and not df.empty:
     types = []
     ideals = {}
 
-    # Default to the paper mapping if we’re in test mode
     default_types = {}
     default_goal = {}
     if run_test:
@@ -120,7 +128,6 @@ if df is not None and not df.empty:
     for col in df.columns:
         default_idx = 0  # Benefit
         if col in default_types:
-            # map to selectbox index
             if default_types[col] == "Cost":
                 default_idx = 1
             elif default_types[col] == "Ideal (Goal)":
@@ -143,18 +150,57 @@ if df is not None and not df.empty:
             )
             ideals[col] = float(val)
 
-    # ---------- Step 3: β ----------
-    st.header("Step 3: Compute SYAI")
-    beta_default = 0.5 if run_test else 0.5
+    # ---------- Step 3: Weights ----------
+    st.header("Step 3: Set Weights")
+    m = df.shape[1]
+
+    weighting_mode = "Equal (1/m)" if run_test else st.radio(
+        "Weighting scheme",
+        ["Equal (1/m)", "Custom"],
+        horizontal=True
+    )
+
+    # Build a weight editor for "Custom"
+    weight_inputs = {}
+    if weighting_mode == "Custom" and not run_test:
+        st.caption("Enter raw weights (they will be normalized to sum to 1).")
+        cols = st.columns(min(4, m))
+        for j, col in enumerate(df.columns):
+            with cols[j % len(cols)]:
+                # default equal as a starting point
+                weight_inputs[col] = st.number_input(
+                    f"w({col})",
+                    min_value=0.0,
+                    value=1.0,  # raw; will be normalized
+                    step=0.1,
+                    key=f"w_{col}"
+                )
+        raw_w = pd.Series(weight_inputs, dtype=float)
+        w = normalize_weights(raw_w)
+        st.write("**Normalized weights:**")
+        st.dataframe(w.to_frame("Weight").T.style.format("{:.6f}"))
+    else:
+        w = pd.Series([1.0/m]*m, index=df.columns, dtype=float)
+        if run_test:
+            st.info("Test mode uses equal weights to match the paper example.")
+        else:
+            st.caption("Equal weights selected (each criterion gets 1/m).")
+
+    # ---------- Step 4: β and Run ----------
+    st.header("Step 4: Compute SYAI")
+    beta_default = 0.5
     beta = st.slider("β (blend of D+ and D-)", 0.0, 1.0, beta_default, 0.01)
 
     if st.button("Run SYAI"):
-        result, N, W, A_plus, A_minus = compute_syai_equal_weights(df, types, ideals, beta)
+        result, N, W, A_plus, A_minus, w_used = compute_syai(df, types, ideals, w, beta)
 
         st.subheader("Normalized Matrix")
         st.dataframe(N.style.format("{:.6f}"))
 
-        st.subheader("Weighted Matrix (equal weights)")
+        st.subheader("Weights used")
+        st.dataframe(w_used.to_frame("Weight").T.style.format("{:.6f}"))
+
+        st.subheader("Weighted Matrix")
         st.dataframe(W.style.format("{:.6f}"))
 
         c1, c2 = st.columns(2)
@@ -174,16 +220,13 @@ if df is not None and not df.empty:
             })
         )
 
-        # --- If we’re in test mode, show expected vs computed
+        # --- Paper check stays valid only under equal weights ---
         if run_test:
             st.markdown("### Paper Check (expected vs computed)")
             expected_Dp = pd.Series([0.25875, 0.49500, 0.60750], index=["A1", "A2", "A3"])
             expected_Dm = pd.Series([0.61875, 0.38250, 0.27000], index=["A1", "A2", "A3"])
             expected_C  = pd.Series([0.705128, 0.435897, 0.307692], index=["A1", "A2", "A3"])
 
-            # recompute distances to reference order (A1..A3)
-            # pull from result’s underlying values:
-            # Better: recompute directly from W, A+/A- in the same order
             Dp = (W.sub(A_plus, axis=1).abs()).sum(axis=1).reindex(expected_Dp.index)
             Dm = (W.sub(A_minus, axis=1).abs()).sum(axis=1).reindex(expected_Dm.index)
             denom = beta * Dp + (1 - beta) * Dm
@@ -205,6 +248,6 @@ if df is not None and not df.empty:
                   np.allclose(Dm.values, expected_Dm.values, atol=tol) and
                   np.allclose(Cscore.values, expected_C.values, atol=tol))
             if ok:
-                st.success("✅ Matches the paper exactly.")
+                st.success("✅ Matches the paper exactly (equal weights).")
             else:
-                st.error("❌ Does not match the paper. Check types, goal value, and β.")
+                st.error("❌ Does not match the paper. Check types, goal value, β, and ensure weights are equal.")
