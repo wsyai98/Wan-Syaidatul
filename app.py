@@ -3,7 +3,7 @@ import streamlit.components.v1 as components
 
 st.set_page_config(page_title="SYAI-Rank (Web UI)", layout="wide")
 
-# Soft shell
+# Soft shell behind the embed
 st.markdown("""
 <style>
 .stApp { background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 120%) !important; }
@@ -46,6 +46,7 @@ html = r"""
   .btn:hover{background:var(--pink-700)}
   .toggle{padding:8px 12px;border-radius:12px;border:1px solid #333;background:#111;color:#eee;cursor:pointer}
   body.theme-light .toggle{background:#fff;color:#111;border-color:#cbd5e1}
+
   .tabs{display:flex;gap:8px;margin:12px 0}
   .tab{padding:10px 14px;border-radius:12px;border:1px solid #333;background:#202329;color:#ddd;cursor:pointer}
   .tab.active{background:var(--pink);border-color:var(--pink-700);color:#fff}
@@ -67,18 +68,16 @@ html = r"""
   .hint{font-size:12px;opacity:.8}
 
   .table-wrap{overflow:auto;max-height:360px}
-  table{width:100%;border-collapse:collapse;font-size:14px;color:#000} /* force black inside cards */
+  table{width:100%;border-collapse:collapse;font-size:14px;color:#000} /* force black inside tables */
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e5e7eb}
 
   .mt2{margin-top:8px}.mt4{margin-top:16px}.mt6{margin-top:24px}.mb2{margin-bottom:8px}
   .w100{width:100%}
 
-  /* charts */
   .chart,.linechart{width:100%;border:1px dashed #2a2f38;border-radius:12px;padding:8px;background:transparent}
   .chart{height:360px}
   .linechart{height:300px}
 
-  /* tooltip */
   #tooltip{
     position:fixed;display:none;padding:6px 8px;border-radius:8px;background:#fff;color:#111;
     border:1px solid #e5e7eb;box-shadow:0 12px 24px rgba(0,0,0,.18);font-size:12px;pointer-events:none;z-index:99999
@@ -114,7 +113,7 @@ html = r"""
           <div class="section-title">Step 1: Upload Decision Matrix</div>
           <label for="csvFile" class="btn">📤 Choose CSV</label>
           <input id="csvFile" type="file" accept=".csv" style="display:none"/>
-          <p class="hint mt2">First column must be <b>Alternative</b>.</p>
+          <p class="hint mt2">First column is treated as <b>Alternative</b> automatically.</p>
         </div>
 
         <div id="typesCard" class="card dark" style="display:none">
@@ -143,12 +142,12 @@ html = r"""
       <div>
         <div id="matrixCard" class="card" style="display:none">
           <div class="section-title">Decision Matrix (first 10 rows)</div>
-          <div class="table-wrap"><table id="matrixTable" class="table-light"></table></div>
+          <div class="table-wrap"><table id="matrixTable"></table></div>
         </div>
 
         <div id="resultCard" class="card" style="display:none">
           <div class="section-title">Final Ranking (SYAI)</div>
-          <div class="table-wrap"><table id="resultTable" class="table-light"></table></div>
+          <div class="table-wrap"><table id="resultTable"></table></div>
 
           <div class="mt6">
             <div class="hint mb2">Ranking — Bar</div>
@@ -203,7 +202,7 @@ html = r"""
   const show = (el, on=true)=> { el.style.display = on ? "" : "none"; };
   const err = (msg)=>{ const e=$("err"); e.textContent="Error: "+msg; e.style.display="block"; };
 
-  // theme toggle
+  // THEME
   let dark=true;
   const applyTheme = ()=> {
     document.body.classList.toggle('theme-dark', dark);
@@ -213,7 +212,7 @@ html = r"""
   $("themeToggle").onclick=()=>{ dark=!dark; applyTheme(); };
   applyTheme();
 
-  // tooltip helpers
+  // TOOLTIP
   const tooltip = $("tooltip");
   function showTip(html, x, y){
     tooltip.innerHTML = html;
@@ -223,7 +222,7 @@ html = r"""
   }
   function hideTip(){ tooltip.style.display = "none"; }
 
-  // CSV parser
+  // CSV PARSER
   function parseCSVText(text){
     const rows = []; let i=0, cur="", inQuotes=false, row=[];
     const pushCell=()=>{ row.push(cur); cur=""; };
@@ -246,6 +245,7 @@ html = r"""
     return rows;
   }
 
+  // SAMPLE CSV
   const sampleCSV = `Alternative,Cost,Quality,Delivery Time,Temperature
 A1,200,8,4,30
 A2,250,7,5,60
@@ -254,48 +254,55 @@ A3,300,9,6,85
   $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(sampleCSV);
   $("downloadSample").download = "sample.csv";
 
-  // tabs
+  // TABS
   $("tabRank").onclick=()=>{ $("tabRank").classList.add("active"); $("tabCompare").classList.remove("active"); show($("viewRank"),true); show($("viewCompare"),false); };
   $("tabCompare").onclick=()=>{ $("tabCompare").classList.add("active"); $("tabRank").classList.remove("active"); show($("viewRank"),false); show($("viewCompare"),true); };
 
-  // comparison images
+  // COMPARISON images
   $("urlScatter").oninput = ()=>{ const v=$("urlScatter").value.trim(); if(v){ $("imgScatter").src=v; show($("imgScatter"),true);} else show($("imgScatter"),false); };
   $("urlCorr").oninput = ()=>{ const v=$("urlCorr").value.trim(); if(v){ $("imgCorr").src=v; show($("imgCorr"),true);} else show($("imgCorr"),false); };
   $("upScatter").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $("imgScatter").src=r.result; show($("imgScatter"),true); }; r.readAsDataURL(f); };
   $("upCorr").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $("imgCorr").src=r.result; show($("imgCorr"),true); }; r.readAsDataURL(f); };
 
-  // state
+  // STATE
   let columns=[], rows=[], crits=[], types={}, ideals={}, weights={}, beta=0.5, weightMode='equal';
-
   $("beta").oninput = ()=>{ beta = parseFloat($("beta").value); $("betaVal").textContent = beta.toFixed(2); };
   $("wEqual").onchange = ()=>{ weightMode='equal'; show($("weightsGrid"),false); };
   $("wCustom").onchange = ()=>{ weightMode='custom'; show($("weightsGrid"),true); };
 
-  // upload
+  // UPLOAD
   $("csvFile").onchange = (e)=>{
     const f = e.target.files[0]; if(!f) return;
     const reader = new FileReader();
-    reader.onload = ()=>{
-      try{
-        initFromCSV(String(reader.result));
-      }catch(ex){ err(ex.message || String(ex)); }
-    };
+    reader.onload = ()=>{ try{ initFromCSV(String(reader.result)); }catch(ex){ err(ex.message || String(ex)); } };
     reader.readAsText(f);
   };
 
+  // ALWAYS TREAT FIRST COLUMN AS ALTERNATIVE
   function initFromCSV(txt){
     const arr = parseCSVText(txt);
     if(!arr.length) throw new Error("Empty CSV");
-    columns = arr[0];
-    if(columns[0] !== "Alternative"){
-      const altIdx = columns.indexOf("Alternative");
-      if(altIdx > 0){ columns.splice(altIdx,1); columns.unshift("Alternative"); }
+
+    // sanitize headers to strings
+    columns = arr[0].map(c => String(c ?? "").trim());
+
+    // if any column is literally 'Alternative', move it to index 0;
+    // else rename the first column to 'Alternative' (so it’s excluded from criteria/weights)
+    if (columns.includes("Alternative")) {
+      const idx = columns.indexOf("Alternative");
+      if (idx !== 0) { const name = columns.splice(idx,1)[0]; columns.unshift(name); } // keep label but move to front
+    } else {
+      columns[0] = "Alternative";
     }
-    crits = columns.filter(c=>c!=="Alternative");
+
+    // criteria = everything AFTER column 0
+    crits = columns.slice(1);
+
     rows = arr.slice(1).filter(r=>r.length>=columns.length).map(r=>{
       const obj={}; columns.forEach((c,i)=> obj[c]=r[i] ?? ""); return obj;
     });
 
+    // defaults
     types  = Object.fromEntries(crits.map(c=>[c,"Benefit"]));
     ideals = Object.fromEntries(crits.map(c=>[c,""]));
     weights= Object.fromEntries(crits.map(c=>[c,1]));
@@ -311,7 +318,7 @@ A3,300,9,6,85
     show($("resultCard"),false);
   }
 
-  // Paper example button (loads + sets defaults + runs)
+  // PAPER EXAMPLE
   $("loadPaperBtn").onclick = ()=>{
     const paper = `Alternative,Cost,Quality,Delivery Time,Temperature
 A1,200,8,4,30
@@ -319,17 +326,15 @@ A2,250,7,5,60
 A3,300,9,6,85
 `;
     initFromCSV(paper);
-    // Set paper types/goals
     types = { "Cost":"Cost", "Quality":"Benefit", "Delivery Time":"Cost", "Temperature":"Ideal (Goal)" };
-    crits.forEach(c=>{ if(!types[c]) types[c]="Benefit"; });
     ideals["Temperature"] = "60";
     weightMode = 'equal'; $("wEqual").checked = true; $("wCustom").checked = false; show($("weightsGrid"), false);
     beta = 0.5; $("beta").value = "0.5"; $("betaVal").textContent = "0.50";
-    renderTypes();
-    renderWeights();
+    renderTypes(); renderWeights();
     runSYAI();
   };
 
+  // UI BUILDERS
   function renderMatrix(){
     const tb = $("matrixTable"); tb.innerHTML = "";
     const thead = document.createElement("thead"); const trh = document.createElement("tr");
@@ -380,7 +385,7 @@ A3,300,9,6,85
     });
   }
 
-  // --- SYAI core ---
+  // SYAI core
   const C = 0.01;
   function toNum(v){ const x=parseFloat(String(v).replace(/,/g,"")); return isFinite(x)?x:NaN; }
 
@@ -403,7 +408,6 @@ A3,300,9,6,85
       N[c] = normalizeColumn(series, types[c] || "Benefit", ideals[c]);
     });
 
-    // weights
     const w={};
     if(weightMode==='equal'){
       crits.forEach(c=> w[c]=1/crits.length);
@@ -413,16 +417,14 @@ A3,300,9,6,85
       if(sumw<=0) crits.forEach(c=> w[c]=1/crits.length); else crits.forEach(c=> w[c]/=sumw);
     }
 
-    // weighted matrix
     const W = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, N[c][i]*w[c]])) );
-    // A+ A-
     const Aplus={}, Aminus={};
     crits.forEach(c=>{
       let mx=-Infinity, mn=Infinity;
       W.forEach(row=>{ if(row[c]>mx) mx=row[c]; if(row[c]<mn) mn=row[c]; });
       Aplus[c]=mx; Aminus[c]=mn;
     });
-    // distances & closeness
+
     const res = rows.map((r,i)=>{
       let Dp=0, Dm=0;
       crits.forEach(c=>{ Dp += Math.abs(W[i][c]-Aplus[c]); Dm += Math.abs(W[i][c]-Aminus[c]); });
@@ -436,11 +438,10 @@ A3,300,9,6,85
   }
 
   $("runBtn").onclick = ()=>runSYAI();
-
   function runSYAI(){
     const result = compute(); if(!result) return;
 
-    // result table (black text)
+    // table (black text)
     const tb = $("resultTable"); tb.innerHTML="";
     const thead=document.createElement("thead"); const trh=document.createElement("tr");
     ["Alternative","D+","D-","Closeness","Rank"].forEach(h=>{ const th=document.createElement("th"); th.textContent=h; trh.appendChild(th); });
@@ -460,20 +461,18 @@ A3,300,9,6,85
     drawLine(result.map(r=>({rank:r.Rank, value:r.Close, name:r.Alternative})));
   }
 
-  // ------- SVG Charts with tooltips -------
+  // Charts + tooltips
   const PASTELS = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"];
   let barRects=[], linePoints=[];
 
   function drawBar(data){
     const svg = $("barSVG"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     barRects.length = 0; hideTip();
-
     const rect = svg.getBoundingClientRect();
     const W = rect.width||800, H = rect.height||360, padL=50,padR=20,padT=18,padB=44;
     const max = Math.max(...data.map(d=>d.value)) || 1;
     const barW = (W - padL - padR) / data.length * 0.8;
 
-    // y grid + ticks (black)
     for(let t=0;t<=5;t++){
       const val = max*t/5;
       const y = H - padB - (H - padT - padB)*(val/max);
@@ -500,7 +499,7 @@ A3,300,9,6,85
       rectEl.setAttribute("fill", PASTELS[i%PASTELS.length]);
       svg.appendChild(rectEl);
 
-      // numeric label inside top (black)
+      // value label (black)
       const txt = document.createElementNS("http://www.w3.org/2000/svg","text");
       txt.setAttribute("x", x + barW/2); txt.setAttribute("y", Math.max(y + 14, padT + 12));
       txt.setAttribute("text-anchor","middle"); txt.setAttribute("font-size","12"); txt.setAttribute("fill","#000");
@@ -517,7 +516,6 @@ A3,300,9,6,85
       barRects.push({x, y, w:barW, h, d});
     });
 
-    // tooltip events
     svg.onmousemove = (ev)=>{
       const b = svg.getBoundingClientRect(), mx = ev.clientX - b.left, my = ev.clientY - b.top;
       const hit = barRects.find(r => mx>=r.x && mx<=r.x+r.w && my>=r.y && my<=r.y+r.h);
@@ -539,7 +537,6 @@ A3,300,9,6,85
     const scaleX = (r)=> padL + (W-padL-padR) * ( (r-minX) / (maxX-minX||1) );
     const scaleY = (v)=> H - padB - (H-padT-padB) * (v/maxY);
 
-    // grid + ticks (black)
     for(let t=0;t<=5;t++){
       const val = maxY*t/5;
       const y = H - padB - (H - padT - padB)*(val/maxY);
@@ -555,7 +552,6 @@ A3,300,9,6,85
       svg.appendChild(tEl);
     }
 
-    // path
     const p = document.createElementNS("http://www.w3.org/2000/svg","path");
     let dstr = "";
     data.sort((a,b)=> a.rank - b.rank).forEach((pnt,idx)=>{
@@ -567,7 +563,6 @@ A3,300,9,6,85
     p.setAttribute("fill","none"); p.setAttribute("stroke","#64748b"); p.setAttribute("stroke-width","2");
     svg.appendChild(p);
 
-    // points + labels (black)
     linePoints.forEach(lp=>{
       const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
       c.setAttribute("cx",lp.x); c.setAttribute("cy",lp.y); c.setAttribute("r","4"); c.setAttribute("fill","#94a3b8");
@@ -577,7 +572,6 @@ A3,300,9,6,85
       t.textContent = lp.info.value.toFixed(3); svg.appendChild(t);
     });
 
-    // x labels
     for(let r=1;r<=maxX;r++){
       const x=scaleX(r);
       const t = document.createElementNS("http://www.w3.org/2000/svg","text");
@@ -585,7 +579,6 @@ A3,300,9,6,85
       t.textContent = r; svg.appendChild(t);
     }
 
-    // tooltip for closest point
     svg.onmousemove = (ev)=>{
       const b = svg.getBoundingClientRect(), mx = ev.clientX - b.left, my = ev.clientY - b.top;
       let best=null, dist=1e9;
