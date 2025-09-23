@@ -1,22 +1,38 @@
 import base64
+from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="SYAI-Rank (Web UI)", layout="wide")
 
-# ---------- helpers to embed local images as data URIs ----------
-def img_data_uri(path: str) -> str:
-    try:
-        with open(path, "rb") as f:
-            return "data:image/png;base64," + base64.b64encode(f.read()).decode("utf-8")
-    except Exception:
-        return ""
+# ---------- Robust image loader: tries ./ and ./assets relative to app.py ----------
+def img_data_uri_try(candidates):
+    here = Path(__file__).resolve().parent
+    for name in candidates:
+        p = Path(name)
+        if not p.is_absolute():
+            p = here / name
+        if p.exists() and p.is_file():
+            ext = p.suffix.lower()
+            if ext in [".jpg", ".jpeg"]:
+                mime = "image/jpeg"
+            else:
+                mime = "image/png"
+            b64 = base64.b64encode(p.read_bytes()).decode("utf-8")
+            return f"data:{mime};base64,{b64}"
+    return ""
 
-# Images are in the repo root
-SCATTER_URI = img_data_uri("scatter_matrix.png")
-CORR_URI    = img_data_uri("corr_matrix.png")
+# Your images live in repo root; we also try assets/ as fallback
+SCATTER_URI = img_data_uri_try(["scatter_matrix.png", "assets/scatter_matrix.png"])
+CORR_URI    = img_data_uri_try(["corr_matrix.png",   "assets/corr_matrix.png"])
 
-# Soft background in the Streamlit shell behind the embed
+# Visible hints if something is missing (helps diagnose path/case issues)
+if not SCATTER_URI:
+    st.warning("scatter_matrix.png not found (looked in ./ and ./assets/). Check filename & case.")
+if not CORR_URI:
+    st.warning("corr_matrix.png not found (looked in ./ and ./assets/). Check filename & case.")
+
+# Soft background behind the embedded UI
 st.markdown("""
 <style>
 .stApp { background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 120%) !important; }
@@ -24,7 +40,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- MAIN EMBED ----------
+# ---------- Main embedded UI (HTML + JS) ----------
 html = r"""
 <!doctype html>
 <html lang="en">
@@ -582,7 +598,7 @@ A3,300,9,6,85
 </html>
 """
 
-# inject image URIs into HTML (simple .replace so braces in CSS/JS are safe)
+# Inject image data URIs into the HTML
 html = html.replace("SCATTER_DATA_URI", SCATTER_URI or "")
 html = html.replace("CORR_DATA_URI", CORR_URI or "")
 
