@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+from pathlib import Path
 
 st.set_page_config(page_title="SYAI-Rank", layout="wide")
 st.title("SYAI-Rank (C=0.01, L1 distances, deferred weight normalization)")
@@ -207,32 +207,70 @@ if tabs == "SYAI Ranking":
                 })
             )
 
-            # Visualization of ranking
+            # ---- Ranking Visualization (Streamlit native, no matplotlib) ----
             st.subheader("Ranking Visualization")
-            fig, ax = plt.subplots()
-            result_sorted = result.sort_values("Rank")
-            ax.bar(result_sorted.index, result_sorted["Closeness Score"], color="skyblue")
-            ax.set_ylabel("Closeness Score")
-            ax.set_title("SYAI Alternative Ranking")
-            st.pyplot(fig)
+            chart_df = result.sort_values("Rank")[["Closeness Score"]]
+            chart_df.index.name = "Alternative"
+            st.bar_chart(chart_df)
+
+            # Paper check (valid for equal weights)
+            if run_test:
+                st.markdown("### Paper Check (expected vs computed)")
+                expected_Dp = pd.Series([0.25875, 0.49500, 0.60750], index=["A1", "A2", "A3"])
+                expected_Dm = pd.Series([0.61875, 0.38250, 0.27000], index=["A1", "A2", "A3"])
+                expected_C  = pd.Series([0.705128, 0.435897, 0.307692], index=["A1", "A2", "A3"])
+
+                Dp = (W.sub(A_plus, axis=1).abs()).sum(axis=1).reindex(expected_Dp.index)
+                Dm = (W.sub(A_minus, axis=1).abs()).sum(axis=1).reindex(expected_Dm.index)
+                denom = beta * Dp + (1 - beta) * Dm
+                denom = denom.replace(0, np.finfo(float).eps)
+                Cscore = ((1 - beta) * Dm) / denom
+
+                comp = pd.DataFrame({
+                    "D+ (expected)": expected_Dp,
+                    "D+ (computed)": Dp,
+                    "D- (expected)": expected_Dm,
+                    "D- (computed)": Dm,
+                    "Closeness (expected)": expected_C,
+                    "Closeness (computed)": Cscore
+                })
+                st.dataframe(comp.style.format("{:.6f}"))
+
+                tol = 1e-6
+                ok = (np.allclose(Dp.values, expected_Dp.values, atol=tol) and
+                      np.allclose(Dm.values, expected_Dm.values, atol=tol) and
+                      np.allclose(Cscore.values, expected_C.values, atol=tol))
+                if ok:
+                    st.success("✅ Matches the paper exactly (equal weights).")
+                else:
+                    st.error("❌ Does not match the paper. Ensure types, goal value, β, and weights are equal.")
 
 # ---------- Comparison Tab ----------
 if tabs == "Comparison with Other Methods":
     st.header("Comparison of SYAI with Other MCDM Methods")
-
     st.markdown("""
-    This section provides a comparison of the **SYAI method** against 
-    other Multi-Criteria Decision-Making (MCDM) methods such as 
-    TOPSIS, VIKOR, SAW, COBRA, WASPAS, and MOORA.  
+    This section provides a comparison of **SYAI** against TOPSIS, VIKOR, SAW, COBRA,
+    WASPAS, and MOORA. The figures summarize pairwise relationships and correlation patterns.
     """)
 
-    st.image("scatter_matrix.png", caption="Scatter Matrix for Method Scores", use_container_width=True)
-    st.image("corr_matrix.png", caption="Correlation Heatmap of Method Scores", use_container_width=True)
+    # Show local images if present (put the PNGs beside app.py)
+    scatter_path = Path("scatter_matrix.png")
+    corr_path = Path("corr_matrix.png")
+
+    if scatter_path.exists():
+        st.image(str(scatter_path), caption="Scatter Matrix for Method Scores", use_container_width=True)
+    else:
+        st.warning("scatter_matrix.png not found in app folder.")
+
+    if corr_path.exists():
+        st.image(str(corr_path), caption="Correlation Heatmap of Method Scores", use_container_width=True)
+    else:
+        st.warning("corr_matrix.png not found in app folder.")
 
     st.markdown("""
-    - The **scatter matrix** shows pairwise relationships between SYAI and other methods.  
-    - The **correlation heatmap** highlights similarities and differences.  
-    - Darker blue = higher correlation, lighter = weaker correlation.  
+    **How to read this:**
+    - The **scatter matrix** shows pairwise score relationships across methods (each dot = one alternative).
+    - The **correlation heatmap** highlights similarity of rankings/scores across methods.
+      Darker cells imply stronger agreement.
+    - Use these together to validate whether SYAI trends align with or diverge from other methods.
     """)
-
-    st.info("This comparison helps to validate how SYAI behaves relative to established MCDM methods.")
