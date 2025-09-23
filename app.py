@@ -3,7 +3,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="SYAI-Rank (Web UI)", layout="wide")
+st.set_page_config(page_title="SYAI-Rank", layout="wide")
 
 # ---------- Robust image loader ----------
 APP_DIR = Path(__file__).resolve().parent
@@ -207,7 +207,7 @@ html = r"""
     <!-- Scatter matrix -->
     <div class="cmp-row">
       <div class="cmp-panel">
-        <div class="section-title">Scatter Matrix (Large)</div>
+        <div class="section-title">Scatter Matrix </div>
         <img id="bigScatter" class="cmp-img" style="display:none"/>
         <div id="scatterMissing" class="cmp-placeholder" style="display:none">
           <div>
@@ -229,7 +229,7 @@ html = r"""
     <!-- Correlation heatmap -->
     <div class="cmp-row">
       <div class="cmp-panel">
-        <div class="section-title">Correlation Heatmap (Large)</div>
+        <div class="section-title">Correlation Heatmap </div>
         <img id="bigCorr" class="cmp-img" style="display:none"/>
         <div id="corrMissing" class="cmp-placeholder" style="display:none">
           <div>
