@@ -62,8 +62,8 @@ html = r"""
   body.theme-light .card.dark{background:#fff;color:#111;border-color:#e5e7eb}
 
   .section-title{font-weight:700;font-size:18px;margin-bottom:12px;color:#f9a8d4}
-  /* make only the left "Step X" headings black */
-  .section-title.step{color:#000 !important;}
+  /* keep Step 1–4 headings pink in both themes */
+  .section-title.step{color:#f9a8d4 !important;}
   .label{display:block;font-size:12px;opacity:.85;margin-bottom:4px}
 
   input[type="text"],input[type="number"],select{
@@ -198,8 +198,6 @@ html = r"""
   </div>
 </div>
 
-<div id="tooltip"></div>
-
 <script>
 (function(){
   const $ = (id)=> document.getElementById(id);
@@ -217,7 +215,21 @@ html = r"""
   applyTheme();
 
   // TOOLTIP
-  const tooltip = $("tooltip");
+  const tooltip = document.createElement("div");
+  tooltip.id = "tooltip";
+  tooltip.style.position = "fixed";
+  tooltip.style.display = "none";
+  tooltip.style.padding = "6px 8px";
+  tooltip.style.borderRadius = "8px";
+  tooltip.style.background = "#fff";
+  tooltip.style.color = "#111";
+  tooltip.style.border = "1px solid #e5e7eb";
+  tooltip.style.boxShadow = "0 12px 24px rgba(0,0,0,.18)";
+  tooltip.style.fontSize = "12px";
+  tooltip.style.pointerEvents = "none";
+  tooltip.style.zIndex = "99999";
+  document.body.appendChild(tooltip);
+
   function showTip(html, x, y){
     tooltip.innerHTML = html;
     tooltip.style.left = (x + 12) + "px";
