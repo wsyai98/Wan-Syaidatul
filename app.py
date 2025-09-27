@@ -7,7 +7,7 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="SYAI-Rank", layout="wide")
 APP_DIR = Path(__file__).resolve().parent
 
-# (optional) embed static images if you add them later
+# (optional) embed local images if you add them later
 def img_data_uri_try(candidates: list[str]) -> tuple[str, bool]:
     for name in candidates:
         p = Path(name)
@@ -20,8 +20,12 @@ def img_data_uri_try(candidates: list[str]) -> tuple[str, bool]:
             return (f"data:{mime};base64,{b64}", True)
     return ("", False)
 
-SCATTER_URI, SCATTER_FOUND = img_data_uri_try(["scatter_matrix.png", "assets/scatter_matrix.png"])
-CORR_URI, CORR_FOUND = img_data_uri_try(["corr_matrix.png", "assets/corr_matrix.png"])
+SCATTER_URI, SCATTER_FOUND = img_data_uri_try(
+    ["scatter_matrix.png", "assets/scatter_matrix.png"]
+)
+CORR_URI, CORR_FOUND = img_data_uri_try(
+    ["corr_matrix.png", "assets/corr_matrix.png"]
+)
 
 st.markdown("""
 <style>
@@ -30,6 +34,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ------------------------------- HTML APP -------------------------------
 html = r"""
 <!doctype html>
 <html lang="en">
@@ -71,15 +76,13 @@ html = r"""
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e5e7eb}
 
   .chart2{width:100%;height:360px;border:1px dashed #9ca3af;border-radius:12px;background:#f9fafb}
-  .chartTall{width:100%;height:460px;border:1px dashed #9ca3af;border-radius:12px;background:#f9fafb}
+  .chartTall{width:100%;height:480px;border:1px dashed #9ca3af;border-radius:12px;background:#f9fafb}
 
   .grid2{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
 </style>
 </head>
 <body>
 <div class="container">
-  <div id="err" style="display:none;background:#7f1d1d;color:#fff;padding:10px 12px;border:1px solid #fecaca;border-radius:8px;margin-bottom:8px"></div>
-
   <div class="header">
     <div class="title">SYAI-Rank</div>
     <div class="row">
@@ -206,7 +209,7 @@ html = r"""
           </div>
 
           <div class="mt6">
-            <div class="hint mb2">Correlation Heatmap — <b>Spearman</b> (white→navy, axes black)</div>
+            <div class="hint mb2">Correlation Heatmap — <b>Spearman</b> (soft blue palette with legend)</div>
             <div class="chartTall"><svg id="mmc_heat" width="100%" height="100%"></svg></div>
           </div>
         </div>
@@ -217,9 +220,9 @@ html = r"""
 
 <script>
 (function(){
-  const $ = (id)=> document.getElementById(id);
+  const $  = (id)=> document.getElementById(id);
   const show = (el,on=true)=> el.style.display = on ? "" : "none";
-  const PASTELS=["#fde2e4","#bee1e6","#cdeac0","#fdfd96","#e2cfea","#bcd4e6","#ffd6a5","#e3f2fd"];
+  const PASTELS = ["#cdeafe","#d5e8d4","#ffe6cc","#fbd5e7","#e3f2fd","#e8eaf6","#dcedc8","#ffecb3"]; // soft bar colors
 
   const sampleCSV = `Alternative,Cost,Quality,Delivery
 A1,200,8,4
@@ -229,11 +232,11 @@ A4,220,8,4
 A5,180,6,7
 `;
 
-  // download sample link
+  // sample link
   $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(sampleCSV);
   $("downloadSample").download = "sample.csv";
 
-  // tab switching (sturdy)
+  // tab switching
   function activateSYAI(e){ if(e){e.preventDefault(); e.stopPropagation();}
     $("tabSYAI").classList.add("active"); $("tabCompare").classList.remove("active");
     show($("viewSYAI"), true); show($("viewCompare"), false);
@@ -271,21 +274,22 @@ A5,180,6,7
   const toNum=(v)=>{ const x=parseFloat(String(v).replace(/,/g,"")); return isFinite(x)?x:NaN; };
   function vectorNorm(vals){ const d=Math.sqrt(vals.reduce((s,v)=>s+(v*v),0))||1; return vals.map(v=>v/d); }
 
-  // unified unitization for SYAI space: Benefit/Cost/Goal -> [0.01,1]
-  function normalizeColumn(vals, ctype, goal){
-    const max=Math.max(...vals), min=Math.min(...vals), R=max-min;
-    let xStar;
-    if(ctype==="Benefit") xStar=max;
-    else if(ctype==="Cost") xStar=min;
-    else {
-      const g=parseFloat(goal);
-      xStar = isFinite(g)? g : (vals.reduce((s,v)=>s+(isFinite(v)?v:0),0)/vals.length);
+  // SAW utilities
+  function sawUnit(vals, type="Benefit", goal=null){
+    const max=Math.max(...vals), min=Math.min(...vals);
+    if(type==="Benefit"){
+      const M = max || 1; return vals.map(x=> (x)/(M||1));
     }
-    if(Math.abs(R)<1e-12) return vals.map(_=>1.0);
-    return vals.map(x=> Math.max(0.01, Math.min(1, 0.01 + (1-0.01)*(1-Math.abs(x-xStar)/R))));
+    if(type==="Cost"){
+      const m = min || 1; return vals.map(x=> (m)/(x||1));
+    }
+    // Goal/Ideal
+    const R=(max-min)||1;
+    const g = isFinite(parseFloat(goal))? parseFloat(goal) : (min+max)/2;
+    return vals.map(x=> Math.max(0, 1 - Math.abs(x-g)/R ));
   }
 
-  // ======== TAB 1 state & UI ========
+  // ======= TAB 1: SYAI =======
   let c1=[], r1=[], crit1=[], type1={}, ideal1={}, w1={}, wmode1='equal', beta1=0.5;
   $("beta1").oninput = ()=>{ beta1=parseFloat($("beta1").value); $("beta1v").textContent=beta1.toFixed(2); };
   $("w1eq").onchange = ()=>{ wmode1='equal'; $("wg1").style.display="none"; };
@@ -318,6 +322,7 @@ A5,180,6,7
                  .map(o=> ({Alternative:o.alt, Dp:o.Dp, Dm:o.Dm, Close:o.Close}));
     res.sort((a,b)=> b.Close-a.Close);
     res.forEach((r,i)=> r.Rank = i+1);
+
     const tb=$("tblr1"); tb.innerHTML="";
     const thead=document.createElement("thead"); thead.innerHTML="<tr><th>Alternative</th><th>D+</th><th>D-</th><th>Closeness</th><th>Rank</th></tr>"; tb.appendChild(thead);
     const tbody=document.createElement("tbody");
@@ -328,11 +333,12 @@ A5,180,6,7
     });
     tb.appendChild(tbody);
     show($("r1"),true);
+
     drawSimpleBar("bar1", res.map(d=>({name:d.Alternative, value:d.Close})));
     drawSimpleLine("line1", res.map(d=>({rank:d.Rank, value:d.Close, name:d.Alternative})));
   };
 
-  // ======== TAB 2 state & UI ========
+  // ======= TAB 2: COMPARISON =======
   let c2=[], r2=[], crit2=[], type2={}, ideal2={}, w2={}, wmode2='equal';
   $("w2eq").onchange = ()=>{ wmode2='equal'; $("wg2").style.display="none"; };
   $("w2c").onchange  = ()=>{ wmode2='custom'; $("wg2").style.display=""; };
@@ -401,21 +407,32 @@ A5,180,6,7
     });
   }
 
-  // ============= CORE COMPUTATIONS =============
-  // SYAI core (kept exactly as your working formula)
-  function computeSYAI(rows, crits, types, ideals, weights, wmode, beta){
-    const X = rows.map(r=> Object.fromEntries(crits.map(c=>[c, toNum(r[c])])) );
-
-    // utilities [0.01,1]
-    const U={}; crits.forEach(c=>{ U[c] = normalizeColumn(X.map(row=>row[c]), types[c]||"Benefit", ideals[c]); });
-
-    // weights
+  // ================= CORE COMPUTE (shared) =================
+  function computeWeights(crits, weights, mode){
     const w={};
-    if(wmode==='equal'){ crits.forEach(c=> w[c]=1/crits.length); }
-    else{ let s=0; crits.forEach(c=>{ const v=Math.max(0,parseFloat(weights[c]||0)); w[c]=isFinite(v)?v:0; s+=w[c]; });
-          if(s<=0) crits.forEach(c=> w[c]=1/crits.length); else crits.forEach(c=> w[c]/=s); }
+    if(mode==='equal'){ crits.forEach(c=> w[c]=1/crits.length); }
+    else{
+      let s=0; crits.forEach(c=>{ const v=Math.max(0,parseFloat(weights[c]||0)); w[c]=isFinite(v)?v:0; s+=w[c]; });
+      if(s<=0) crits.forEach(c=> w[c]=1/crits.length); else crits.forEach(c=> w[c]/=s);
+    }
+    return w;
+  }
 
-    // weighted-utility matrix
+  function computeU(rows, crits, types, ideals){
+    const U={};
+    crits.forEach(c=>{
+      const vals = rows.map(r=> toNum(r[c]));
+      U[c] = sawUnit(vals, types[c]||"Benefit", ideals[c]);
+    });
+    return U;
+  }
+
+  // SYAI core (unchanged)
+  function computeSYAI(rows, crits, types, ideals, weights, wmode, beta){
+    const U = computeU(rows, crits, types, ideals);
+    const w = computeWeights(crits, weights, wmode);
+
+    // weighted utilities for L1 distances
     const W = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, U[c][i]*w[c]])) );
     const Aplus={}, Aminus={};
     crits.forEach(c=>{
@@ -434,22 +451,21 @@ A5,180,6,7
   function runComparison(){
     if(!r2.length) return;
 
-    // SYAI (beta=0.5 for comparison screen)
-    const sy = computeSYAI(r2, crit2, type2, ideal2, w2, wmode2, 0.5);
-    const U = Object.fromEntries(crit2.map(c=>[c, sy[0].Urow ? sy.map(o=>o.Urow[c]) : sy.map((_,i)=>0)]));
-    const w = sy[0].w;
+    // SAW-space U and weights (one source of truth)
+    const U = computeU(r2, crit2, type2, ideal2);
+    const w = computeWeights(crit2, w2, wmode2);
 
-    // SAW (WSM on U)
+    // ---------- SAW ----------
     const SAW = r2.map((_,i)=> crit2.reduce((s,c)=> s + w[c]*U[c][i], 0));
 
-    // WASPAS
+    // ---------- WASPAS ----------
     const WPM = r2.map((_,i)=> crit2.reduce((p,c)=> p * Math.pow(Math.max(U[c][i],1e-12), w[c]), 1));
     const WASPAS = r2.map((_,i)=> 0.5*SAW[i] + 0.5*WPM[i]);
 
-    // MOORA (vector norm; goal uses U)
+    // ---------- MOORA ----------
     const NV={}; crit2.forEach(c=>{
-      const raw = r2.map(r=> toNum(r[c]));
-      NV[c] = ( (type2[c]||"Benefit")==="Ideal (Goal)") ? U[c] : vectorNorm(raw);
+      const vals = r2.map(r=> toNum(r[c]));
+      NV[c] = ( (type2[c]||"Benefit")==="Ideal (Goal)") ? U[c] : vectorNorm(vals);
     });
     const MOORA = r2.map((_,i)=>{
       let sumB=0, sumC=0;
@@ -457,25 +473,25 @@ A5,180,6,7
         if((type2[c]||"Benefit")==="Cost") sumC += w[c]*NV[c][i];
         else sumB += w[c]*NV[c][i];
       });
-      return sumB - sumC;
+      return sumB - sumC;   // may be negative
     });
 
-    // TOPSIS (vector norm space)
+    // ---------- TOPSIS ----------
     const Nt={}; crit2.forEach(c=>{ Nt[c]=vectorNorm(r2.map(r=> toNum(r[c]))); });
     const Wt = r2.map((_,i)=> Object.fromEntries(crit2.map(c=>[c, Nt[c][i]*w[c]])) );
-    const Aplus_t={}, Aminus_t={}; crit2.forEach(c=>{
+    const Aplus={}, Aminus={}; crit2.forEach(c=>{
       const arr=Wt.map(r=>r[c]);
-      if((type2[c]||"Benefit")==="Cost"){ Aplus_t[c]=Math.min(...arr); Aminus_t[c]=Math.max(...arr); }
-      else { Aplus_t[c]=Math.max(...arr); Aminus_t[c]=Math.min(...arr); }
+      if((type2[c]||"Benefit")==="Cost"){ Aplus[c]=Math.min(...arr); Aminus[c]=Math.max(...arr); }
+      else { Aplus[c]=Math.max(...arr); Aminus[c]=Math.min(...arr); }
     });
     const TOPSIS = r2.map((_,i)=>{
       let dp=0, dm=0;
-      crit2.forEach(c=>{ const v=Wt[i][c]; dp+=(v-Aplus_t[c])**2; dm+=(v-Aminus_t[c])**2; });
+      crit2.forEach(c=>{ const v=Wt[i][c]; dp+=(v-Aplus[c])**2; dm+=(v-Aminus[c])**2; });
       dp=Math.sqrt(dp); dm=Math.sqrt(dm);
       return dm/((dp+dm)||1e-12);
     });
 
-    // VIKOR (lower better)
+    // ---------- VIKOR (lower better) ----------
     const fStar={}, fMin={}; crit2.forEach(c=>{
       const vals=r2.map(r=> toNum(r[c]));
       if((type2[c]||"Benefit")==="Cost"){ fStar[c]=Math.min(...vals); fMin[c]=Math.max(...vals); }
@@ -496,15 +512,14 @@ A5,180,6,7
     const Smin=Math.min(...S), Smax=Math.max(...S), Rmin=Math.min(...R), Rmax=Math.max(...R);
     const VIKOR = S.map((_,i)=> 0.5*((S[i]-Smin)/((Smax-Smin)||1)) + 0.5*((R[i]-Rmin)/((Rmax-Rmin)||1)));
 
-    // SYAI scores from compute
+    // ---------- SYAI ----------
+    const sy = computeSYAI(r2, crit2, type2, ideal2, w2, wmode2, 0.5);
     const SYAI = sy.map(o=> o.Close);
 
-    // *** COBRA (ADJUSTED) ***
-    // Weighted distance to ideal in SYAI (SAW-unit) space: di = sum_c w_c * (1 - U_ic)
-    // Center it: COBRA_i = di - mean(di). Lower = better, may be negative.
+    // ---------- COBRA (fixed, SAW-space, mean-centered) ----------
     const d = r2.map((_,i)=> crit2.reduce((s,c)=> s + w[c]*(1 - U[c][i]), 0));
     const meanD = d.reduce((s,v)=>s+v,0)/d.length;
-    const COBRA = d.map(v=> v - meanD);
+    const COBRA = d.map(v=> v - meanD); // lower=better; can be negative
 
     // ranks
     function ranksHigher(a){ const idx=a.map((v,i)=>({v,i})).sort((x,y)=> y.v-x.v); const rk=new Array(a.length); idx.forEach((o,k)=> rk[o.i]=k+1); return rk; }
@@ -514,8 +529,9 @@ A5,180,6,7
     const ranks={ TOPSIS:ranksHigher(TOPSIS), VIKOR:ranksLower(VIKOR), SAW:ranksHigher(SAW),
                   SYAI:ranksHigher(SYAI), COBRA:ranksLower(COBRA), WASPAS:ranksHigher(WASPAS), MOORA:ranksHigher(MOORA) };
 
-    // Render table
     const order=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
+
+    // table
     const tb=$("mmc_table"); tb.innerHTML="";
     const thead=document.createElement("thead"); const trh=document.createElement("tr");
     ["Alternative"].concat(order).forEach(h=>{ const th=document.createElement("th"); th.textContent=h; trh.appendChild(th); });
@@ -532,13 +548,13 @@ A5,180,6,7
     tb.appendChild(tbody);
     show($("rcmp"),true);
 
-    // Charts
+    // charts
     drawCmpBars(methods, ranks, r2.map(r=> String(r["Alternative"])));
     drawCmpScatter({methods, names:r2.map(r=> String(r["Alternative"]))}, $("mmc_x").value, $("mmc_y").value);
-    drawHeatSpearman({methods});
+    drawHeatSpearman({methods});  // soft palette + legend
   }
 
-  // ======== Charts & Heatmap ========
+  // ======== Charts ========
   function drawSimpleBar(svgId, data){
     const svg=$(svgId); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const W=(svg.getBoundingClientRect().width||800), H=(svg.getBoundingClientRect().height||360);
@@ -547,7 +563,6 @@ A5,180,6,7
     const max=Math.max(...data.map(d=>d.value))||1;
     const cell=(W-padL-padR)/data.length, barW=cell*0.8;
 
-    // axes (black)
     const yAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
     yAxis.setAttribute("x1",padL); yAxis.setAttribute("x2",padL); yAxis.setAttribute("y1",padT); yAxis.setAttribute("y2",H-padB); yAxis.setAttribute("stroke","#000"); svg.appendChild(yAxis);
     const xAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
@@ -583,7 +598,6 @@ A5,180,6,7
     const sx=(r)=> padL+(W-padL-padR)*((r-minX)/(maxX-minX||1));
     const sy=(v)=> H-padB-(H-padT-padB)*(v/maxY);
 
-    // axes
     const yAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
     yAxis.setAttribute("x1",padL); yAxis.setAttribute("x2",padL); yAxis.setAttribute("y1",padT); yAxis.setAttribute("y2",H-padB); yAxis.setAttribute("stroke","#000"); svg.appendChild(yAxis);
     const xAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
@@ -614,7 +628,6 @@ A5,180,6,7
     const max = Math.max(...vals.flat()), min = Math.min(...vals.flat());
     const yMin=Math.min(min,0), yMax=Math.max(max,0), range=(yMax-yMin)||1;
 
-    // axes
     const yAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
     yAxis.setAttribute("x1",padL); yAxis.setAttribute("x2",padL); yAxis.setAttribute("y1",padT); yAxis.setAttribute("y2",H-padB); yAxis.setAttribute("stroke","#000"); svg.appendChild(yAxis);
     const xAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
@@ -647,16 +660,16 @@ A5,180,6,7
         rect.setAttribute("x",x0 + k*barW); rect.setAttribute("y",h>=0? y : H-padB);
         rect.setAttribute("width",barW-1.5); rect.setAttribute("height",Math.abs(h));
         rect.setAttribute("fill", PASTELS[k%PASTELS.length]); svg.appendChild(rect);
-        // rank label only
         const t=document.createElementNS("http://www.w3.org/2000/svg","text");
         t.setAttribute("x",x0 + k*barW + (barW-1.5)/2); t.setAttribute("y",(h>=0? y : H-padB)-4);
         t.setAttribute("text-anchor","middle"); t.setAttribute("font-size","11"); t.setAttribute("fill","#000");
-        t.textContent = String((m==="VIKOR"||m==="COBRA")? (methods[m].slice().sort((a,b)=>a-b).indexOf(v)+1) : (methods[m].slice().sort((a,b)=>b-a).indexOf(v)+1));
+        t.textContent = String(v.toFixed(2)); // show value for quick comparison
         svg.appendChild(t);
       });
     });
   }
 
+  // Scatter (Pearson)
   function drawCmpScatter(res, mx, my){
     const svg=$("mmc_sc"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const W=(svg.getBoundingClientRect().width||900), H=(svg.getBoundingClientRect().height||360);
@@ -694,15 +707,16 @@ A5,180,6,7
     cap.setAttribute("font-size","12"); cap.setAttribute("fill","#000"); cap.textContent="Pearson r = "+r.toFixed(3); svg.appendChild(cap);
   }
 
-  // Spearman heatmap (white -> navy)
+  // Spearman heatmap (soft readable blues) + legend
   function drawHeatSpearman(res){
     const methods=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
     const svg=$("mmc_heat"); while(svg.firstChild) svg.removeChild(svg.firstChild);
-    const W=(svg.getBoundingClientRect().width||900), H=(svg.getBoundingClientRect().height||460);
+    const W=(svg.getBoundingClientRect().width||900), H=(svg.getBoundingClientRect().height||480);
     svg.setAttribute("viewBox","0 0 "+W+" "+H);
-    const padL=110, padR=20, padT=55, padB=80;
+    const padL=120, padR=40, padT=60, padB=80;
     const n=methods.length;
 
+    // rank arrays
     function rankArray(a){
       const idx=a.map((v,i)=>({v,i})).sort((x,y)=> x.v-y.v);
       const r=new Array(a.length); let i=0;
@@ -722,16 +736,18 @@ A5,180,6,7
     const ranks = data.map(arr=> rankArray(arr));
     const R = methods.map((_,i)=> methods.map((_,j)=> pearson(ranks[i], ranks[j])));
 
-    function colorFor(v){ // v in [-1,1] -> white to navy
-      const t = Math.max(0, Math.min(1, (v+1)/2)); // 0..1
-      const r = Math.round(255*(1-t));
-      const g = Math.round(255*(1-0.85*t));
-      const b = Math.round(255*t);
+    // soft readable palette (white -> light blue -> deep blue)
+    function colorFor(v){ // v in [-1,1]
+      const t = (v+1)/2; // 0..1
+      const r = Math.round(255*(1 - 0.4*t));
+      const g = Math.round(255*(1 - 0.65*t));
+      const b = Math.round(255*(1 - (1-t)*0.1));
       return "rgb("+r+","+g+","+b+")";
     }
 
     const cellW=(W-padL-padR)/n, cellH=(H-padT-padB)/n;
 
+    // axis labels
     for(let i=0;i<n;i++){
       const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
       tx.setAttribute("x", padL + i*cellW + cellW/2); tx.setAttribute("y", padT-12);
@@ -742,19 +758,50 @@ A5,180,6,7
       ty.setAttribute("text-anchor","end"); ty.setAttribute("font-size","12"); ty.setAttribute("fill","#000"); ty.textContent=methods[i]; svg.appendChild(ty);
     }
 
+    // cells
     for(let i=0;i<n;i++){
       for(let j=0;j<n;j++){
         const r = R[i][j];
         const x=padL + j*cellW, y=padT + i*cellH;
         const rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
         rect.setAttribute("x",x); rect.setAttribute("y",y); rect.setAttribute("width",cellW-1); rect.setAttribute("height",cellH-1);
-        rect.setAttribute("fill", colorFor(r)); rect.setAttribute("stroke","#000"); rect.setAttribute("stroke-width","0.3"); svg.appendChild(rect);
+        rect.setAttribute("fill", colorFor(r)); rect.setAttribute("stroke","#ffffff"); rect.setAttribute("stroke-width","0.5");
+        svg.appendChild(rect);
+        const t=document.createElementNS("http://www.w3.org/2000/svg","text");
+        t.setAttribute("x",x+cellW/2); t.setAttribute("y",y+cellH/2+4);
+        t.setAttribute("text-anchor","middle"); t.setAttribute("font-size","11"); t.setAttribute("fill","#000");
+        t.textContent = r.toFixed(3);
+        svg.appendChild(t);
       }
     }
+
+    // ---- legend (color scale -1..1) ----
+    const Lx = padL + (cellW*n) + 20, Ly = padT, Lw = 16, Lh = cellH*n;
+    const steps = 60;
+    for(let s=0;s<steps;s++){
+      const t = s/(steps-1);
+      const val = -1 + 2*t;
+      const rr=document.createElementNS("http://www.w3.org/2000/svg","rect");
+      rr.setAttribute("x",Lx); rr.setAttribute("y", Ly + (1-t)*Lh);
+      rr.setAttribute("width",Lw); rr.setAttribute("height", Lh/steps + 1);
+      rr.setAttribute("fill", colorFor(val)); svg.appendChild(rr);
+    }
+    const frame=document.createElementNS("http://www.w3.org/2000/svg","rect");
+    frame.setAttribute("x",Lx); frame.setAttribute("y",Ly); frame.setAttribute("width",Lw); frame.setAttribute("height",Lh);
+    frame.setAttribute("fill","none"); frame.setAttribute("stroke","#000"); frame.setAttribute("stroke-width","0.8"); svg.appendChild(frame);
+    // ticks
+    [-1,-0.5,0,0.5,1].forEach(v=>{
+      const y = Ly + (1-(v+1)/2)*Lh;
+      const t=document.createElementNS("http://www.w3.org/2000/svg","text");
+      t.setAttribute("x", Lx + Lw + 6); t.setAttribute("y", y+4); t.setAttribute("font-size","12"); t.setAttribute("fill","#000");
+      t.textContent = v.toFixed(1); svg.appendChild(t);
+    });
+    const lh=document.createElementNS("http://www.w3.org/2000/svg","text");
+    lh.setAttribute("x", Lx-2); lh.setAttribute("y", Ly-10); lh.setAttribute("text-anchor","end");
+    lh.setAttribute("font-size","12"); lh.setAttribute("fill","#000"); lh.textContent="Spearman ρ"; svg.appendChild(lh);
   }
 
-  // helpers for charts
-  function drawCmpScatterWrapper(){ /* redrawn in runComparison */ }
+  // events
   $("mmc_x").onchange = ()=> runComparison();
   $("mmc_y").onchange = ()=> runComparison();
 
@@ -764,10 +811,10 @@ A5,180,6,7
 </html>
 """
 
-# inject image placeholders (if you later use them)
+# inject placeholders (kept for future static images)
 html = html.replace("SCATTER_DATA_URI", SCATTER_URI or "")
 html = html.replace("CORR_DATA_URI", CORR_URI or "")
 html = html.replace("HAS_SCATTER_FLAG", "1" if SCATTER_FOUND else "0")
 html = html.replace("HAS_CORR_FLAG", "1" if CORR_FOUND else "0")
 
-components.html(html, height=3700, scrolling=True)
+components.html(html, height=3850, scrolling=True)
