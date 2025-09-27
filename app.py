@@ -40,7 +40,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- Main embedded UI (YOUR ORIGINAL CODE; UNCHANGED) ----------
+# ---------- SINGLE embedded UI (MERGED + FIXED) ----------
 html = r"""
 <!doctype html>
 <html lang="en">
@@ -79,7 +79,7 @@ html = r"""
   .toggle{padding:8px 12px;border-radius:12px;border:1px solid #333;background:#111;color:#eee;cursor:pointer}
   body.theme-light .toggle{background:#fff;color:#111;border-color:#cbd5e1}
 
-  .tabs{display:flex;gap:8px;margin:12px 0}
+  .tabs{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}
   .tab{padding:10px 14px;border-radius:12px;border:1px solid #333;background:#202329;color:#ddd;cursor:pointer}
   .tab.active{background:var(--pink);border-color:var(--pink-700);color:#fff}
   body.theme-light .tab{background:#e5e7eb;color:#111;border-color:#cbd5e1}
@@ -111,7 +111,7 @@ html = r"""
   .chart{height:360px}
   .linechart{height:300px}
 
-  /* Comparison view */
+  /* Comparison images view */
   .cmp-row{display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:start;margin-top:16px}
   .cmp-panel{background:var(--card-light);color:#000;border-radius:16px;padding:16px;border:1px solid var(--border-light)}
   .cmp-panel.dark{background:var(--card-dark);color:#e5e7eb;border-color:var(--border-dark)}
@@ -123,6 +123,11 @@ html = r"""
     padding:24px;text-align:center
   }
   .cmp-caption{font-size:13px;opacity:.8;margin-top:6px}
+
+  /* Multi-Method RUN view */
+  .controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .grid2{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+  .chart2{width:100%;height:360px;border:1px dashed #2a2f38;border-radius:12px;margin-top:10px}
 </style>
 </head>
 <body class="theme-dark">
@@ -140,10 +145,11 @@ html = r"""
 
   <div class="tabs">
     <button class="tab active" id="tabRank">SYAI Ranking</button>
-    <button class="tab" id="tabCompare">Comparison with Other Methods</button>
+    <button class="tab" id="tabCompareImgs">Comparison Images</button>
+    <button class="tab" id="tabRunCompare">Run Multi-Method Comparison</button>
   </div>
 
-  <!-- ================== RANKING VIEW ================== -->
+  <!-- ================== SYAI RANKING VIEW ================== -->
   <div id="viewRank">
     <div class="grid">
       <!-- LEFT -->
@@ -202,8 +208,8 @@ html = r"""
     </div>
   </div>
 
-  <!-- ==================== COMPARISON ==================== -->
-  <div id="viewCompare" style="display:none">
+  <!-- ==================== COMPARISON IMAGES (SCATTER/HEATMAP) ==================== -->
+  <div id="viewCompareImgs" style="display:none">
     <!-- Scatter matrix -->
     <div class="cmp-row">
       <div class="cmp-panel">
@@ -249,6 +255,79 @@ html = r"""
       </div>
     </div>
   </div>
+
+  <!-- ==================== RUN MULTI-METHOD COMPARISON ==================== -->
+  <div id="viewRunCompare" style="display:none">
+    <div class="grid">
+      <!-- LEFT -->
+      <div>
+        <div class="card dark">
+          <div class="section-title step">Step A: Upload CSV for Comparison</div>
+          <label for="cmpCsvFile" class="btn">📤 Choose CSV</label>
+          <input id="cmpCsvFile" type="file" accept=".csv" style="display:none"/>
+          <p class="hint mt2">First column is <b>Alternative</b>. Others are criteria.</p>
+          <button class="btn mt4" id="cmpDemoBtn">📄 Load Demo CSV</button>
+        </div>
+
+        <div id="cmpTypesCard" class="card dark" style="display:none">
+          <div class="section-title step">Step B: Criteria Types</div>
+          <div id="cmpTypesGrid" class="grid2"></div>
+        </div>
+
+        <div id="cmpWeightsCard" class="card dark" style="display:none">
+          <div class="section-title step">Step C: Weights</div>
+          <div class="row mb2" style="gap:16px">
+            <label><input type="radio" name="cmp_wmode" id="cmp_wEqual" checked> Equal (1/m)</label>
+            <label><input type="radio" name="cmp_wmode" id="cmp_wCustom"> Custom (raw; normalized on run)</label>
+          </div>
+          <div id="cmpWeightsGrid" class="grid2" style="display:none"></div>
+        </div>
+
+        <div class="card dark">
+          <div class="section-title step">Step D: Run</div>
+          <button class="btn" id="cmpRunBtn">▶️ Run Comparison</button>
+        </div>
+      </div>
+
+      <!-- RIGHT -->
+      <div>
+        <div id="cmpMatrixCard" class="card" style="display:none">
+          <div class="section-title">Decision Matrix (first 10 rows)</div>
+          <div class="table-wrap"><table id="cmpMatrixTable"></table></div>
+        </div>
+
+        <div id="cmpResultCard" class="card" style="display:none">
+          <div class="section-title">Scores & Ranks</div>
+          <div class="table-wrap"><table id="mmc_table"></table></div>
+
+          <div class="mt6">
+            <div class="row" style="gap:12px;align-items:center">
+              <div class="hint">Scatter X:</div>
+              <select id="mmc_x">
+                <option>SYAI</option><option>TOPSIS</option><option>VIKOR</option>
+                <option>SAW</option><option>COBRA</option><option>WASPAS</option><option>MOORA</option>
+              </select>
+              <div class="hint">Scatter Y:</div>
+              <select id="mmc_y">
+                <option>TOPSIS</option><option>SYAI</option><option>VIKOR</option>
+                <option>SAW</option><option>COBRA</option><option>WASPAS</option><option>MOORA</option>
+              </select>
+            </div>
+
+            <div class="mt4">
+              <div class="hint mb2">Grouped Bar (all methods)</div>
+              <div class="chart2"><svg id="mmc_bar" width="100%" height="100%"></svg></div>
+            </div>
+
+            <div class="mt6">
+              <div class="hint mb2">Method vs Method — Scatter</div>
+              <div class="chart2"><svg id="mmc_scatter" width="100%" height="100%"></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div> <!-- /grid -->
+  </div> <!-- /viewRunCompare -->
 </div>
 
 <script>
@@ -257,7 +336,7 @@ html = r"""
   const show = (el, on=true)=> { el.style.display = on ? "" : "none"; };
   const err = (msg)=>{ const e=$("err"); e.textContent="Error: "+msg; e.style.display="block"; };
 
-  // theme
+  // ---------- Theme ----------
   let dark=true;
   function applyTheme(){
     document.body.classList.toggle('theme-dark', dark);
@@ -267,11 +346,19 @@ html = r"""
   $("themeToggle").onclick = ()=>{ dark=!dark; applyTheme(); };
   applyTheme();
 
-  // tabs
-  $("tabRank").onclick=()=>{ $("tabRank").classList.add("active"); $("tabCompare").classList.remove("active"); show($("viewRank"),true); show($("viewCompare"),false); };
-  $("tabCompare").onclick=()=>{ $("tabCompare").classList.add("active"); $("tabRank").classList.remove("active"); show($("viewRank"),false); show($("viewCompare"),true); };
+  // ---------- Tabs ----------
+  function activate(tabId){
+    ["tabRank","tabCompareImgs","tabRunCompare"].forEach(id=> $(""+id).classList.remove("active"));
+    $(tabId).classList.add("active");
+    show($("viewRank"), tabId==="tabRank");
+    show($("viewCompareImgs"), tabId==="tabCompareImgs");
+    show($("viewRunCompare"), tabId==="tabRunCompare");
+  }
+  $("tabRank").onclick=()=>activate("tabRank");
+  $("tabCompareImgs").onclick=()=>activate("tabCompareImgs");
+  $("tabRunCompare").onclick=()=>activate("tabRunCompare");
 
-  // Injected by Python for comparison images
+  // ---------- Injected by Python for comparison images ----------
   const SCATTER_URI = "SCATTER_DATA_URI";
   const CORR_URI    = "CORR_DATA_URI";
   const HAS_SCATTER = "HAS_SCATTER_FLAG" === "1";
@@ -282,7 +369,7 @@ html = r"""
   if (HAS_CORR) { $("bigCorr").src = CORR_URI; $("bigCorr").style.display = ""; }
   else { $("corrMissing").style.display = ""; }
 
-  // ========== CSV & SYAI ==========
+  // ========== CSV Utils (shared) ==========
   function parseCSVText(text){
     const rows = []; let i=0, cur="", inQuotes=false, row=[];
     const pushCell=()=>{ row.push(cur); cur=""; };
@@ -304,7 +391,9 @@ html = r"""
     pushCell(); if(row.length>1 || row[0] !== "") pushRow();
     return rows;
   }
+  const toNum=(v)=>{ const x=parseFloat(String(v).replace(/,/g,"")); return isFinite(x)?x:NaN; };
 
+  // ========== SYAI TAB ==========
   const sampleCSV = `Alternative,Cost,Quality,Delivery Time,Temperature
 A1,200,8,4,30
 A2,250,7,5,60
@@ -314,8 +403,6 @@ A3,300,9,6,85
   $("downloadSample").download = "sample.csv";
 
   let columns=[], rows=[], crits=[], types={}, ideals={}, weights={}, beta=0.5, weightMode='equal';
-  const C = 0.01;
-  const toNum=(v)=>{ const x=parseFloat(String(v).replace(/,/g,"")); return isFinite(x)?x:NaN; };
 
   $("beta").oninput = ()=>{ beta = parseFloat($("beta").value); $("betaVal").textContent = beta.toFixed(2); };
   $("wEqual").onchange = ()=>{ weightMode='equal'; $("weightsGrid").style.display="none"; };
@@ -358,7 +445,7 @@ A3,300,9,6,85
     show($("resultCard"), false);
   }
 
-  // Paper example
+  // Paper example for SYAI
   $("loadPaperBtn").onclick = ()=>{
     const csv = `Alternative,Cost,Quality,Delivery Time,Temperature
 A1,200,8,4,30
@@ -488,10 +575,9 @@ A3,300,9,6,85
     drawLine(result.map(r=>({rank:r.Rank, value:r.Close, name:r.Alternative})));
   }
 
-  // charts + tooltips
+  // charts + tooltips for SYAI
   const PASTELS=["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"];
   let barRects=[], linePoints=[];
-
   function showTip(html,x,y){
     let tt=document.getElementById("tt");
     if(!tt){
@@ -581,9 +667,15 @@ A3,300,9,6,85
       const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
       c.setAttribute("cx",lp.x); c.setAttribute("cy",lp.y); c.setAttribute("r","4"); c.setAttribute("fill","#94a3b8");
       svg.appendChild(c);
+      const t=document.createElementNS("http://www.w3.org/200-svg","text"); // typo guard: correct namespace below
+    });
+
+    // add labels after correcting namespace
+    linePoints.forEach(lp=>{
       const t=document.createElementNS("http://www.w3.org/2000/svg","text");
       t.setAttribute("x",lp.x+6); t.setAttribute("y",lp.y-6); t.setAttribute("font-size","12"); t.setAttribute("fill","#000");
-      t.textContent=lp.info.value.toFixed(3); svg.appendChild(t);
+      t.textContent=lp.info.value.toFixed(3); 
+      $("lineSVG").appendChild(t);
     });
 
     for(let r=1;r<=maxX;r++){
@@ -593,8 +685,8 @@ A3,300,9,6,85
       tx.textContent=r; svg.appendChild(tx);
     }
 
-    svg.onmousemove=(e)=>{
-      const b=svg.getBoundingClientRect(), mx=e.clientX-b.left, my=e.clientY-b.top;
+    $("lineSVG").onmousemove=(e)=>{
+      const b=$("lineSVG").getBoundingClientRect(), mx=e.clientX-b.left, my=e.clientY-b.top;
       let best=null, dist=1e9;
       linePoints.forEach(lp=>{
         const d=Math.hypot(lp.x-mx, lp.y-my);
@@ -605,231 +697,221 @@ A3,300,9,6,85
         showTip(`${i.name||"Alt"} — <b>${i.value.toFixed(6)}</b> (Rank ${i.rank})`, e.clientX, e.clientY);
       } else hideTip();
     };
-    svg.onmouseleave=hideTip;
+    $("lineSVG").onmouseleave=hideTip;
   }
-})();
-</script>
-</body>
-</html>
-"""
 
-# Inject URIs and flags
-html = html.replace("SCATTER_DATA_URI", SCATTER_URI or "")
-html = html.replace("CORR_DATA_URI", CORR_URI or "")
-html = html.replace("HAS_SCATTER_FLAG", "1" if SCATTER_FOUND else "0")
-html = html.replace("HAS_CORR_FLAG", "1" if CORR_FOUND else "0")
-
-components.html(html, height=3000, scrolling=True)
-
-# =========================
-# NEW: Multi-Method Comparison (SYAI, TOPSIS, VIKOR, SAW, COBRA, WASPAS, MOORA)
-# =========================
-components.html(r"""
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>SYAI-Rank — Multi-Method Comparison</title>
-<style>
-  :root{ --ink:#f5f5f5; --accent:#ec4899; --accent2:#db2777; }
-  *{box-sizing:border-box} body{margin:0;font-family:ui-sans-serif,system-ui;background:#0b0b0f;color:var(--ink)}
-  .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
-  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-  .btn{background:var(--accent);border:1px solid var(--accent2);color:#fff;padding:10px 14px;border-radius:10px;cursor:pointer}
-  .btn:hover{background:var(--accent2)}
-  input[type="file"]{display:inline-block}
-  .card{background:#101317;border:1px solid #262b35;border-radius:16px;padding:16px;margin-bottom:16px}
-  .title{font-weight:700;color:#f9a8d4;margin-bottom:10px}
-  .table-wrap{overflow:auto;border:1px solid #27303b;border-radius:12px}
-  table{width:100%;border-collapse:collapse;font-size:14px}
-  th,td{padding:8px 10px;border-bottom:1px solid #27303b;white-space:nowrap;text-align:left}
-  .chart{width:100%;height:360px;border:1px dashed #2a2f38;border-radius:12px;margin-top:10px}
-  .controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
-  select{padding:8px 10px;border-radius:10px;border:1px solid #374151;background:#0b0b0f;color:#e5e7eb}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div class="card">
-    <div class="row">
-      <h2 style="margin:0">Multi-Method Comparison</h2>
-      <input id="mmc_file" type="file" accept=".csv"/>
-      <button class="btn" id="mmc_demo">📄 Demo CSV</button>
-      <button class="btn" id="mmc_run">▶️ Run Comparison</button>
-    </div>
-    <div class="controls">
-      <div>Scatter X:
-        <select id="mmc_x">
-          <option>SYAI</option><option>TOPSIS</option><option>VIKOR</option><option>SAW</option><option>COBRA</option><option>WASPAS</option><option>MOORA</option>
-        </select>
-      </div>
-      <div>Scatter Y:
-        <select id="mmc_y">
-          <option>TOPSIS</option><option>SYAI</option><option>VIKOR</option><option>SAW</option><option>COBRA</option><option>WASPAS</option><option>MOORA</option>
-        </select>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="title">Scores & Ranks (value (rank))</div>
-    <div class="table-wrap"><table id="mmc_table"></table></div>
-    <div class="title" style="margin-top:14px">Grouped Bar (all methods)</div>
-    <div class="chart"><svg id="mmc_bar" width="100%" height="100%"></svg></div>
-    <div class="title" style="margin-top:14px">Method vs Method — Scatter</div>
-    <div class="chart"><svg id="mmc_scatter" width="100%" height="100%"></svg></div>
-  </div>
-</div>
-
-<script>
-(function(){
-  const $ = (id)=> document.getElementById(id);
-  const PASTELS=["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5","#ddd6fe","#fdba74"];
+  // ========== MULTI-METHOD COMPARISON TAB ==========
+  const P2=["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5","#ddd6fe","#fdba74"];
   const methodsOrder=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
 
-  // ---------- CSV handling ----------
-  function parseCSVText(text){
-    const rows = []; let i=0, cur="", inQuotes=false, row=[];
-    const pushCell=()=>{ row.push(cur); cur=""; };
-    const pushRow=()=>{ rows.push(row); row=[]; };
-    while(i<text.length){
-      const ch=text[i];
-      if(inQuotes){
-        if(ch==='\"'){ if(text[i+1]==='\"'){ cur+='\"'; i++; } else { inQuotes=false; } }
-        else { cur+=ch; }
-      }else{
-        if(ch==='\"') inQuotes=true;
-        else if(ch===',') pushCell();
-        else if(ch==='\n'){ pushCell(); pushRow(); }
-        else if(ch==='\r'){ }
-        else cur+=ch;
-      }
-      i++;
+  // state
+  let cmp_columns=[], cmp_rows=[], cmp_crits=[];
+  let cmp_types={}, cmp_ideals={}, cmp_weights={}, cmp_wmode='equal';
+
+  function cmp_initFromCSV(txt){
+    const arr=parseCSVText(txt); if(!arr.length) return;
+    cmp_columns = arr[0].map(x=> String(x??"").trim());
+    if(cmp_columns[0] !== "Alternative"){
+      const idx = cmp_columns.indexOf("Alternative");
+      if(idx>0){ const nm=cmp_columns.splice(idx,1)[0]; cmp_columns.unshift(nm); }
+      else { cmp_columns[0]="Alternative"; }
     }
-    pushCell(); if(row.length>1 || row[0] !== "") pushRow();
-    return rows;
+    cmp_crits=cmp_columns.slice(1);
+    cmp_rows = arr.slice(1).filter(r=>r.length>=cmp_columns.length).map(r=>{
+      const o={}; cmp_columns.forEach((c,i)=> o[c]=r[i]); return o;
+    });
+
+    cmp_types  = Object.fromEntries(cmp_crits.map(c=>[c,"Benefit"]));
+    cmp_ideals = Object.fromEntries(cmp_crits.map(c=>[c,""]));
+    cmp_weights= Object.fromEntries(cmp_crits.map(c=>[c,1]));
+
+    cmp_renderMatrix(); cmp_renderTypes(); cmp_renderWeights();
+    show($("cmpMatrixCard"), true);
+    show($("cmpTypesCard"), true);
+    show($("cmpWeightsCard"), true);
+    show($("cmpResultCard"), false);
   }
 
-  let columns=[], crits=[], rows=[];
-  function initFromCSV(txt){
-    const arr=parseCSVText(txt); if(!arr.length) return;
-    columns = arr[0].map(x=> String(x??"").trim());
-    if(columns[0] !== "Alternative"){
-      const idx = columns.indexOf("Alternative");
-      if(idx>0){ const nm=columns.splice(idx,1)[0]; columns.unshift(nm); }
-      else { columns[0]="Alternative"; }
-    }
-    crits=columns.slice(1);
-    rows = arr.slice(1).filter(r=>r.length>=columns.length).map(r=>{
-      const o={}; columns.forEach((c,i)=> o[c]=r[i]); return o;
+  function cmp_renderMatrix(){
+    const tb = $("cmpMatrixTable"); tb.innerHTML="";
+    const thead = document.createElement("thead"); const trh = document.createElement("tr");
+    cmp_columns.forEach(c=>{ const th=document.createElement("th"); th.textContent=c; trh.appendChild(th); });
+    thead.appendChild(trh); tb.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    cmp_rows.slice(0,10).forEach(r=>{
+      const tr=document.createElement("tr");
+      cmp_columns.forEach(c=>{ const td=document.createElement("td"); td.textContent=String(r[c]??""); tr.appendChild(td); });
+      tbody.appendChild(tr);
+    });
+    tb.appendChild(tbody);
+  }
+
+  function cmp_renderTypes(){
+    const wrap=$("cmpTypesGrid"); wrap.innerHTML="";
+    cmp_crits.forEach(c=>{
+      const box=document.createElement("div");
+      const lab=document.createElement("div"); lab.className="label"; lab.textContent=c; box.appendChild(lab);
+      const sel=document.createElement("select");
+      ["Benefit","Cost","Ideal (Goal)"].forEach(v=>{ const o=document.createElement("option"); o.textContent=v; sel.appendChild(o); });
+      sel.value = cmp_types[c]||"Benefit";
+      sel.onchange = ()=>{ cmp_types[c]=sel.value; cmp_renderTypes(); };
+      box.appendChild(sel);
+      if((cmp_types[c]||"")==="Ideal (Goal)"){
+        const inp=document.createElement("input"); inp.className="mt2"; inp.type="number"; inp.step="any"; inp.placeholder="Goal value";
+        inp.value=cmp_ideals[c]||""; inp.oninput=()=> cmp_ideals[c]=inp.value; box.appendChild(inp);
+      }else{ delete cmp_ideals[c]; }
+      wrap.appendChild(box);
     });
   }
 
-  const demo = `Alternative,Cost,Quality,Delivery
+  function cmp_renderWeights(){
+    const wrap=$("cmpWeightsGrid"); wrap.innerHTML="";
+    cmp_crits.forEach(c=>{
+      const box=document.createElement("div");
+      const lab=document.createElement("div"); lab.className="label"; lab.textContent=`w(${c})`; box.appendChild(lab);
+      const inp=document.createElement("input"); inp.type="number"; inp.step="0.001"; inp.min="0"; inp.value=cmp_weights[c]??0;
+      inp.oninput=()=> cmp_weights[c]=inp.value; box.appendChild(inp);
+      wrap.appendChild(box);
+    });
+  }
+
+  $("cmp_wEqual").onchange = ()=>{ cmp_wmode='equal'; $("cmpWeightsGrid").style.display="none"; };
+  $("cmp_wCustom").onchange = ()=>{ cmp_wmode='custom'; $("cmpWeightsGrid").style.display=""; };
+
+  $("cmpCsvFile").onchange = (e)=>{
+    const f = e.target.files[0]; if(!f) return;
+    const r = new FileReader();
+    r.onload = ()=> cmp_initFromCSV(String(r.result));
+    r.readAsText(f);
+  };
+
+  // demo CSV
+  const demoCSV = `Alternative,Cost,Quality,Delivery
 A1,200,8,4
 A2,250,7,5
 A3,300,9,6
 A4,220,8,4
 A5,180,6,7`;
+  $("cmpDemoBtn").onclick = ()=> cmp_initFromCSV(demoCSV);
 
-  $("mmc_demo").onclick = ()=> { initFromCSV(demo); runComparison(); };
-  $("mmc_file").onchange = (e)=>{
-    const f=e.target.files[0]; if(!f) return;
-    const r=new FileReader(); r.onload=()=>{ initFromCSV(String(r.result)); }; r.readAsText(f);
-  };
-
-  // ---------- Core computations ----------
-  function toNum(x){ const v=parseFloat(String(x).replace(/,/g,"")); return isFinite(v)?v:0; }
-
-  // Normalizations/utilities
+  // math helpers
+  function vec(vals){ return vals.map(x=> (isFinite(x)? x : 0)); }
   function vectorNorm(vals){ const d=Math.sqrt(vals.reduce((s,v)=>s+(v*v),0))||1; return vals.map(v=>v/d); }
   function sawNorm(vals, type="Benefit"){
-    const max=Math.max(...vals), min=Math.min(...vals), R=max-min || 1;
+    const max=Math.max(...vals), min=Math.min(...vals), R=(max-min)||1;
     if(type==="Cost") return vals.map(x=> (max-x)/R);
-    return vals.map(x=> (x-min)/R); // Benefit default
+    return vals.map(x=> (x-min)/R);
   }
   function benefitUtility(vals, type="Benefit"){ // in [0,1]
     return sawNorm(vals, type);
   }
 
   function computeAll(){
-    if(!rows.length) return null;
-    const X = rows.map(r=> Object.fromEntries(crits.map(c=>[c, toNum(r[c])])) );
+    if(!cmp_rows.length) return null;
+    const X = cmp_rows.map(r=> Object.fromEntries(cmp_crits.map(c=>[c, toNum(r[c])])) );
 
-    // Define all criteria as Benefit by default; if you need per-criterion types, you can adapt here.
-    const types = Object.fromEntries(crits.map(c=>[c, "Benefit"]));
-
-    // Equal weights
-    const w = Object.fromEntries(crits.map(c=>[c, 1/crits.length]));
+    // weights
+    const w={};
+    if(cmp_wmode==='equal'){ cmp_crits.forEach(c=> w[c]=1/cmp_crits.length); }
+    else {
+      let sum=0; cmp_crits.forEach(c=>{ const v=Math.max(0,parseFloat(cmp_weights[c]||0)); w[c]=isFinite(v)?v:0; sum+=w[c]; });
+      if(sum<=0) cmp_crits.forEach(c=> w[c]=1/cmp_crits.length); else cmp_crits.forEach(c=> w[c]/=sum);
+    }
 
     // ---------- SAW ----------
     const N_saw = {};
-    crits.forEach(c=> N_saw[c] = sawNorm(X.map(r=>r[c]), types[c]) );
-    const SAW = X.map((_,i)=> crits.reduce((s,c)=> s + w[c]*N_saw[c][i], 0));
+    cmp_crits.forEach(c=> N_saw[c] = sawNorm(X.map(r=>r[c]), cmp_types[c]) );
+    const SAW = X.map((_,i)=> cmp_crits.reduce((s,c)=> s + w[c]*N_saw[c][i], 0));
 
     // ---------- WASPAS ----------
-    const WSM = SAW.slice(); // since SAW already weighted normalized sum
-    const WPM = X.map((_,i)=> crits.reduce((p,c)=> p * Math.pow(Math.max(N_saw[c][i],1e-12), w[c]), 1));
+    const WSM = SAW.slice();
+    const WPM = X.map((_,i)=> cmp_crits.reduce((p,c)=> p * Math.pow(Math.max(N_saw[c][i],1e-12), w[c]), 1));
     const WASPAS = X.map((_,i)=> 0.5*WSM[i] + 0.5*WPM[i]);
 
     // ---------- MOORA ----------
     const N_moora = {};
-    crits.forEach(c=> N_moora[c] = vectorNorm(X.map(r=>r[c])) );
-    const MOORA = X.map((_,i)=> crits.reduce((s,c)=> s + w[c]*N_moora[c][i], 0));
+    cmp_crits.forEach(c=> N_moora[c] = vectorNorm(vec(X.map(r=>r[c]))) );
+    const MOORA = X.map((_,i)=> cmp_crits.reduce((s,c)=> s + w[c]*N_moora[c][i], 0));
 
     // ---------- TOPSIS ----------
     const N_t = {};
-    crits.forEach(c=> N_t[c] = vectorNorm(X.map(r=>r[c])) );
-    const W_t = X.map((_,i)=> Object.fromEntries(crits.map(c=>[c, N_t[c][i]*w[c]])) );
+    cmp_crits.forEach(c=> N_t[c] = vectorNorm(vec(X.map(r=>r[c]))) );
+    const W_t = X.map((_,i)=> Object.fromEntries(cmp_crits.map(c=>[c, N_t[c][i]*w[c]])) );
     const Aplus={}, Aminus={};
-    crits.forEach(c=>{
+    cmp_crits.forEach(c=>{
       const arr=W_t.map(r=>r[c]);
-      Aplus[c]=Math.max(...arr); Aminus[c]=Math.min(...arr);
+      // Benefit/Cost orientation for ideal in TOPSIS
+      if ((cmp_types[c]||"Benefit")==="Cost"){
+        Aplus[c]=Math.min(...arr); Aminus[c]=Math.max(...arr);
+      } else {
+        Aplus[c]=Math.max(...arr); Aminus[c]=Math.min(...arr);
+      }
     });
     const TOPSIS = X.map((_,i)=>{
       let dp=0, dm=0;
-      crits.forEach(c=>{ const v=W_t[i][c]; dp+=(v-Aplus[c])**2; dm+=(v-Aminus[c])**2; });
+      cmp_crits.forEach(c=>{ const v=W_t[i][c]; dp+=(v-Aplus[c])**2; dm+=(v-Aminus[c])**2; });
       dp=Math.sqrt(dp); dm=Math.sqrt(dm);
       return dm/(dp+dm);
     });
 
-    // ---------- SYAI (same as your closeness idea w/ beta=0.5) ----------
-    // Reuse SAW-style normalization to define W, then use D+ and D- on weighted values
-    const N_sy = N_saw; // same normalization style keeps [0,1]
-    const W_sy = X.map((_,i)=> Object.fromEntries(crits.map(c=>[c, N_sy[c][i]*w[c]])) );
+    // ---------- SYAI (beta=0.5, using benefit/cost/goal to normalize to [0,1]) ----------
+    const N_sy = {};
+    cmp_crits.forEach(c=>{
+      const vals = vec(X.map(r=>r[c]));
+      if((cmp_types[c]||"Benefit")==="Ideal (Goal)"){
+        const g=parseFloat(cmp_ideals[c]); const max=Math.max(...vals), min=Math.min(...vals), R=(max-min)||1;
+        N_sy[c] = vals.map(x=> Math.max(0.01, Math.min(1, 0.01 + (1-0.01)*(1-Math.abs(x-(isFinite(g)?g:(min+max)/2))/R))));
+      }else{
+        N_sy[c] = sawNorm(vals, cmp_types[c]);
+      }
+    });
+    const W_sy = X.map((_,i)=> Object.fromEntries(cmp_crits.map(c=>[c, N_sy[c][i]*w[c]])) );
     const Aplus_sy={}, Aminus_sy={};
-    crits.forEach(c=>{
+    cmp_crits.forEach(c=>{
       const arr=W_sy.map(r=>r[c]);
       Aplus_sy[c]=Math.max(...arr); Aminus_sy[c]=Math.min(...arr);
     });
-    const beta=0.5;
+    const betaSY=0.5;
     const SYAI = X.map((_,i)=>{
       let Dp=0, Dm=0;
-      crits.forEach(c=>{ const v=W_sy[i][c]; Dp+=Math.abs(v-Aplus_sy[c]); Dm+=Math.abs(v-Aminus_sy[c]); });
-      const denom = beta*Dp + (1-beta)*Dm || Number.EPSILON;
-      return ((1-beta)*Dm)/denom;
+      cmp_crits.forEach(c=>{ const v=W_sy[i][c]; Dp+=Math.abs(v-Aplus_sy[c]); Dm+=Math.abs(v-Aminus_sy[c]); });
+      const denom = betaSY*Dp + (1-betaSY)*Dm || Number.EPSILON;
+      return ((1-betaSY)*Dm)/denom;
     });
 
-    // ---------- VIKOR (Q lower better; we convert to 1-Q so higher is better in table) ----------
+    // ---------- VIKOR ----------
     const fStar={}, fMin={};
-    crits.forEach(c=>{
+    cmp_crits.forEach(c=>{
       const vals=X.map(r=>r[c]);
-      fStar[c]=Math.max(...vals); fMin[c]=Math.min(...vals);
+      // For VIKOR we orient using Benefit/Cost
+      if ((cmp_types[c]||"Benefit")==="Cost"){
+        fStar[c]=Math.min(...vals); fMin[c]=Math.max(...vals);
+      } else {
+        fStar[c]=Math.max(...vals); fMin[c]=Math.min(...vals);
+      }
     });
-    const S = X.map(r=> crits.reduce((s,c)=> s + w[c]*((fStar[c]-r[c]) / ((fStar[c]-fMin[c])||1)), 0));
-    const R = X.map(r=> Math.max(...crits.map(c=> w[c]*((fStar[c]-r[c]) / ((fStar[c]-fMin[c])||1)) )));
+    const S = X.map(r=> cmp_crits.reduce((s,c)=> {
+      const rng=(fStar[c]-fMin[c]); 
+      const term = ((cmp_types[c]||"Benefit")==="Cost") ?
+        ( (r[c]-fStar[c]) / ((fMin[c]-fStar[c])||1) ) : ( (fStar[c]-r[c]) / ((fStar[c]-fMin[c])||1) );
+      return s + w[c]*term;
+    }, 0));
+    const R = X.map(r=> Math.max(...cmp_crits.map(c=>{
+      const term = ((cmp_types[c]||"Benefit")==="Cost") ?
+        ( (r[c]-fStar[c]) / ((fMin[c]-fStar[c])||1) ) : ( (fStar[c]-r[c]) / ((fStar[c]-fMin[c])||1) );
+      return w[c]*term;
+    })));
     const Smin=Math.min(...S), Smax=Math.max(...S), Rmin=Math.min(...R), Rmax=Math.max(...R);
     const v=0.5;
     const VIKOR_raw = X.map((_,i)=> v*((S[i]-Smin)/((Smax-Smin)||1)) + (1-v)*((R[i]-Rmin)/((Rmax-Rmin)||1)) );
     const VIKOR = VIKOR_raw.map(q=> 1 - q); // higher better for display
 
-    // ---------- COBRA (distance to ideal minus distance to anti-ideal; higher better) ----------
+    // ---------- COBRA (utility-space distance diff) ----------
     const U = {};
-    crits.forEach(c=> U[c] = benefitUtility(X.map(r=>r[c]), types[c]) );
+    cmp_crits.forEach(c=> U[c] = benefitUtility(X.map(r=>r[c]), cmp_types[c]) );
     const COBRA = X.map((_,i)=>{
       let diPlus=0, diMinus=0;
-      crits.forEach(c=>{
+      cmp_crits.forEach(c=>{
         const z=U[c][i];
         diPlus  += w[c]*(1 - z)**2; // ideal at 1
         diMinus += w[c]*(z - 0)**2; // anti-ideal at 0
@@ -838,12 +920,11 @@ A5,180,6,7`;
       return diMinus - diPlus; // higher better
     });
 
-    // ---------- Ranks ----------
+    // ranks
     function ranksHigherBetter(arr){
       const idx=arr.map((v,i)=>({v,i})).sort((a,b)=> b.v-a.v);
       const rk=new Array(arr.length); idx.forEach((o,k)=> rk[o.i]=k+1); return rk;
     }
-
     const ranks = {
       TOPSIS: ranksHigherBetter(TOPSIS),
       VIKOR:  ranksHigherBetter(VIKOR),
@@ -854,21 +935,17 @@ A5,180,6,7`;
       MOORA:  ranksHigherBetter(MOORA),
     };
 
-    return {
-      methods:{TOPSIS, VIKOR, SAW, SYAI, COBRA, WASPAS, MOORA},
-      ranks
-    };
+    return { methods:{TOPSIS,VIKOR,SAW,SYAI,COBRA,WASPAS,MOORA}, ranks };
   }
 
-  // ---------- UI rendering ----------
-  function renderTable(res){
+  function renderCmpTable(res){
     const tb=$("mmc_table"); tb.innerHTML="";
     const thead=document.createElement("thead"); const trh=document.createElement("tr");
     ["Alternative"].concat(methodsOrder).forEach(h=>{ const th=document.createElement("th"); th.textContent=h; trh.appendChild(th); });
     thead.appendChild(trh); tb.appendChild(thead);
 
     const tbody=document.createElement("tbody");
-    rows.forEach((r,i)=>{
+    cmp_rows.forEach((r,i)=>{
       const tr=document.createElement("tr");
       const t0=document.createElement("td"); t0.textContent=String(r["Alternative"]); tr.appendChild(t0);
       methodsOrder.forEach(m=>{
@@ -881,19 +958,18 @@ A5,180,6,7`;
     tb.appendChild(tbody);
   }
 
-  function drawBars(res){
+  function drawCmpBars(res){
     const svg=$("mmc_bar"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const rect=svg.getBoundingClientRect(); const W=rect.width||900, H=rect.height||360;
     svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
     const padL=70,padR=20,padT=20,padB=60;
 
-    const data = rows.map((r,i)=> ({name:String(r["Alternative"]), vals:methodsOrder.map(m=> res.methods[m][i])}));
+    const data = cmp_rows.map((r,i)=> ({name:String(r["Alternative"]), vals:methodsOrder.map(m=> res.methods[m][i])}));
     const allVals = data.flatMap(d=>d.vals);
     const max=Math.max(...allVals), min=Math.min(...allVals);
     const yMin=Math.min(min,0), yMax=Math.max(max,0), range=(yMax-yMin)||1;
     const cell=(W-padL-padR)/data.length; const barW = (cell*0.8)/methodsOrder.length;
 
-    // grid
     for(let t=0;t<=5;t++){
       const val=yMin + range*t/5;
       const y=H-padB - (H-padT-padB)*((val-yMin)/range);
@@ -918,7 +994,7 @@ A5,180,6,7`;
         const rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
         rect.setAttribute("x",x); rect.setAttribute("y", h>=0? y : H-padB);
         rect.setAttribute("width",barW-1.5); rect.setAttribute("height",Math.abs(h));
-        rect.setAttribute("fill", PASTELS[k%PASTELS.length]);
+        rect.setAttribute("fill", P2[k%P2.length]);
         svg.appendChild(rect);
       });
     });
@@ -927,14 +1003,14 @@ A5,180,6,7`;
     methodsOrder.forEach((m,i)=>{
       const y=padT+14 + i*16, x=W-padR-160;
       const sw=document.createElementNS("http://www.w3.org/2000/svg","rect");
-      sw.setAttribute("x",x); sw.setAttribute("y",y-10); sw.setAttribute("width",12); sw.setAttribute("height",12); sw.setAttribute("fill",PASTELS[i%PASTELS.length]);
+      sw.setAttribute("x",x); sw.setAttribute("y",y-10); sw.setAttribute("width",12); sw.setAttribute("height",12); sw.setAttribute("fill",P2[i%P2.length]);
       const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
       tx.setAttribute("x",x+18); tx.setAttribute("y",y); tx.setAttribute("font-size","12"); tx.setAttribute("fill","#f5f5f5"); tx.textContent=m;
       svg.appendChild(sw); svg.appendChild(tx);
     });
   }
 
-  function drawScatter(res){
+  function drawCmpScatter(res){
     const svg=$("mmc_scatter"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const rect=svg.getBoundingClientRect(); const W=rect.width||900, H=rect.height||360;
     svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
@@ -946,12 +1022,10 @@ A5,180,6,7`;
     const sx=(x)=> padL + (W-padL-padR)*((x - Xmin)/((Xmax-Xmin)||1));
     const sy=(y)=> H-padB - (H-padT-padB)*((y - Ymin)/((Ymax-Ymin)||1));
 
-    // axes
     const ax=document.createElementNS("http://www.w3.org/2000/svg","line"); ax.setAttribute("x1",padL); ax.setAttribute("x2",padL); ax.setAttribute("y1",padT); ax.setAttribute("y2",H-padB); ax.setAttribute("stroke","#374151");
     const ay=document.createElementNS("http://www.w3.org/2000/svg","line"); ay.setAttribute("x1",padL); ay.setAttribute("x2",W-padR); ay.setAttribute("y1",H-padB); ay.setAttribute("y2",H-padB); ay.setAttribute("stroke","#374151");
     svg.appendChild(ax); svg.appendChild(ay);
 
-    // ticks
     for(let t=0;t<=5;t++){
       const vx=Xmin+(Xmax-Xmin)*t/5, vy=Ymin+(Ymax-Ymin)*t/5;
       const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
@@ -961,17 +1035,16 @@ A5,180,6,7`;
       svg.appendChild(tx); svg.appendChild(ty);
     }
 
-    rows.forEach((r,i)=>{
+    cmp_rows.forEach((r,i)=>{
       const cx=sx(xs[i]), cy=sy(ys[i]);
       const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
-      c.setAttribute("cx",cx); c.setAttribute("cy",cy); c.setAttribute("r","5"); c.setAttribute("fill",PASTELS[i%PASTELS.length]);
+      c.setAttribute("cx",cx); c.setAttribute("cy",cy); c.setAttribute("r","5"); c.setAttribute("fill",P2[i%P2.length]);
       svg.appendChild(c);
       const lb=document.createElementNS("http://www.w3.org/2000/svg","text");
       lb.setAttribute("x",cx+6); lb.setAttribute("y",cy-6); lb.setAttribute("font-size","12"); lb.setAttribute("fill","#f5f5f5"); lb.textContent=String(r["Alternative"]);
       svg.appendChild(lb);
     });
 
-    // axis labels
     const lx=document.createElementNS("http://www.w3.org/2000/svg","text");
     lx.setAttribute("x",(padL+W-padR)/2); lx.setAttribute("y",H-8); lx.setAttribute("text-anchor","middle"); lx.setAttribute("font-size","12"); lx.setAttribute("fill","#f5f5f5"); lx.textContent=mx;
     const ly=document.createElementNS("http://www.w3.org/2000/svg","text");
@@ -981,16 +1054,28 @@ A5,180,6,7`;
 
   function runComparison(){
     const res=computeAll(); if(!res) return;
-    renderTable(res);
-    drawBars(res);
-    drawScatter(res);
+    renderCmpTable(res);
+    drawCmpBars(res);
+    drawCmpScatter(res);
+    show($("cmpResultCard"), true);
   }
 
-  $("mmc_run").onclick = ()=> runComparison();
-  $("mmc_x").onchange = ()=> { const res=computeAll(); if(res) drawScatter(res); };
-  $("mmc_y").onchange = ()=> { const res=computeAll(); if(res) drawScatter(res); };
+  $("cmpRunBtn").onclick = ()=> runComparison();
+  $("mmc_x").onchange = ()=> { const res=computeAll(); if(res) drawCmpScatter(res); };
+  $("mmc_y").onchange = ()=> { const res=computeAll(); if(res) drawCmpScatter(res); };
+
+  // default: show first tab
+  activate("tabRank");
 })();
 </script>
 </body>
 </html>
-""", height=1800, scrolling=True)
+"""
+
+# Inject URIs and flags
+html = html.replace("SCATTER_DATA_URI", SCATTER_URI or "")
+html = html.replace("CORR_DATA_URI", CORR_URI or "")
+html = html.replace("HAS_SCATTER_FLAG", "1" if SCATTER_FOUND else "0")
+html = html.replace("HAS_CORR_FLAG", "1" if CORR_FOUND else "0")
+
+components.html(html, height=3600, scrolling=True)
