@@ -7,7 +7,7 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="SYAI-Rank", layout="wide")
 APP_DIR = Path(__file__).resolve().parent
 
-# ---------- small helper: embed local images if you add them later ----------
+# (optional) embed static images if you add them later
 def img_data_uri_try(candidates: list[str]) -> tuple[str, bool]:
     for name in candidates:
         p = Path(name)
@@ -20,14 +20,9 @@ def img_data_uri_try(candidates: list[str]) -> tuple[str, bool]:
             return (f"data:{mime};base64,{b64}", True)
     return ("", False)
 
-SCATTER_URI, SCATTER_FOUND = img_data_uri_try(
-    ["scatter_matrix.png", "assets/scatter_matrix.png"]
-)
-CORR_URI, CORR_FOUND = img_data_uri_try(
-    ["corr_matrix.png", "assets/corr_matrix.png"]
-)
+SCATTER_URI, SCATTER_FOUND = img_data_uri_try(["scatter_matrix.png", "assets/scatter_matrix.png"])
+CORR_URI, CORR_FOUND = img_data_uri_try(["corr_matrix.png", "assets/corr_matrix.png"])
 
-# ---------- light UI theming ----------
 st.markdown("""
 <style>
   .stApp { background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 120%) !important; }
@@ -35,7 +30,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# =============== FULL SINGLE-PAGE APP (HTML + JS) ===============
 html = r"""
 <!doctype html>
 <html lang="en">
@@ -45,45 +39,44 @@ html = r"""
 <title>SYAI-Rank</title>
 <style>
   :root{
-    --bg-dark:#0b0b0f; --grad-light:#ffe4e6;
-    --card-dark:#0f1115cc; --card-light:#ffffffcc; --text-light:#f5f5f5;
-    --pink:#ec4899; --pink-700:#db2777; --border-dark:#262b35; --border-light:#fbcfe8;
+    --pink:#ec4899; --pink-700:#db2777;
+    --card:#ffffff; --border:#e5e7eb;
   }
-  *{box-sizing:border-box} html,body{height:100%;margin:0}
-  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Cantarell,"Noto Sans","Helvetica Neue",Arial}
-  body.theme-dark{ color:var(--text-light); background:linear-gradient(180deg,#0b0b0f 0%,#0b0b0f 35%,var(--grad-light) 120%); }
-  body.theme-light{ color:#111; background:#f8fafc; }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial}
 
   .container{max-width:1200px;margin:24px auto;padding:0 16px}
   .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-  .title{font-weight:800;font-size:28px;color:#fce7f3}
+  .title{font-weight:800;font-size:28px;color:#111}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid var(--pink-700);background:var(--pink);color:#fff;cursor:pointer}
-  .btn:hover{background:var(--pink-700)}
-  .toggle{padding:8px 12px;border-radius:12px;border:1px solid #333;background:#111;color:#eee;cursor:pointer}
 
-  .tabs{display:flex;gap:8px;margin:12px 0}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid var(--pink-700);background:var(--pink);color:#fff;cursor:pointer}
+  .btn:hover{filter:brightness(0.96)}
+  .tabs{display:flex;gap:8px;margin:12px 0;position:relative;z-index:10}
   .tab{padding:10px 14px;border-radius:12px;border:1px solid #333;background:#e5e7eb;color:#111;cursor:pointer}
   .tab.active{background:var(--pink);border-color:var(--pink-700);color:#fff}
 
   .grid{display:grid;gap:16px;grid-template-columns:1fr}
   @media (min-width:1024px){.grid{grid-template-columns:1fr 2fr}}
 
-  .card{background:var(--card-light);color:#000;border-radius:16px;padding:18px;border:1px solid var(--border-light);backdrop-filter:blur(6px)}
-  .card.dark{background:var(--card-dark);color:#e5e7eb;border-color:var(--border-dark)}
-  .section-title{font-weight:700;font-size:18px;margin-bottom:12px;color:#f9a8d4}
+  .card{background:var(--card);color:#111;border-radius:16px;padding:18px;border:1px solid var(--border)}
+  .section-title{font-weight:700;font-size:18px;margin-bottom:12px;color:#db2777}
   .label{display:block;font-size:12px;opacity:.85;margin-bottom:4px}
   input[type="number"],select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #ddd;background:#f8fafc;color:#111}
   .hint{font-size:12px;opacity:.8}
+
   .table-wrap{overflow:auto;max-height:360px}
-  table{width:100%;border-collapse:collapse;font-size:14px;color:#000}
+  table{width:100%;border-collapse:collapse;font-size:14px;color:#111}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e5e7eb}
-  .mt2{margin-top:8px}.mt4{margin-top:16px}.mt6{margin-top:24px}.mb2{margin-bottom:8px}
-  .chart2{width:100%;height:360px;border:1px dashed #2a2f38;border-radius:12px;background:#f3f4f6}
-  .chartTall{width:100%;height:460px;border:1px dashed #2a2f38;border-radius:12px;background:#f3f4f6}
+
+  .chart2{width:100%;height:360px;border:1px dashed #9ca3af;border-radius:12px;background:#f9fafb}
+  .chartTall{width:100%;height:460px;border:1px dashed #9ca3af;border-radius:12px;background:#f9fafb}
+
+  .grid2{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
 </style>
 </head>
-<body class="theme-light">
+<body>
 <div class="container">
   <div id="err" style="display:none;background:#7f1d1d;color:#fff;padding:10px 12px;border:1px solid #fecaca;border-radius:8px;margin-bottom:8px"></div>
 
@@ -91,46 +84,45 @@ html = r"""
     <div class="title">SYAI-Rank</div>
     <div class="row">
       <a class="btn" id="downloadSample">⬇️ Sample CSV</a>
-      <button class="toggle" id="themeToggle">☀️ Light</button>
     </div>
   </div>
 
   <div class="tabs">
-    <button class="tab active" id="tabSYAI">SYAI Method</button>
-    <button class="tab" id="tabCompare">Comparison (TOPSIS, VIKOR, SAW, SYAI, COBRA, WASPAS, MOORA)</button>
+    <button type="button" class="tab active" id="tabSYAI">SYAI Method</button>
+    <button type="button" class="tab" id="tabCompare">Comparison (TOPSIS, VIKOR, SAW, SYAI, COBRA, WASPAS, MOORA)</button>
   </div>
 
-  <!-- ==================== TAB 1: SYAI ONLY ==================== -->
+  <!-- ================= TAB 1: SYAI ONLY ================= -->
   <div id="viewSYAI">
     <div class="grid">
       <div>
-        <div class="card dark">
+        <div class="card">
           <div class="section-title">Step 1: Upload CSV</div>
           <label for="csv1" class="btn">📤 Choose CSV</label>
           <input id="csv1" type="file" accept=".csv" style="display:none"/>
-          <button class="btn mt2" id="demo1">📄 Load Demo CSV</button>
-          <p class="hint mt2">First column must be <b>Alternative</b>. Others are criteria.</p>
+          <button type="button" class="btn" id="demo1">📄 Load Demo CSV</button>
+          <p class="hint mt2">First column is <b>Alternative</b>. Others are criteria.</p>
         </div>
 
-        <div id="t1" class="card dark" style="display:none">
+        <div id="t1" class="card" style="display:none">
           <div class="section-title">Step 2: Criteria Types</div>
-          <div id="types1" class="row" style="flex-wrap:wrap"></div>
+          <div id="types1" class="grid2"></div>
         </div>
 
-        <div id="w1" class="card dark" style="display:none">
+        <div id="w1" class="card" style="display:none">
           <div class="section-title">Step 3: Weights</div>
           <div class="row mb2" style="gap:16px">
             <label><input type="radio" name="wmode1" id="w1eq" checked> Equal (1/m)</label>
-            <label><input type="radio" name="wmode1" id="w1c"> Custom (raw; normalized on run)</label>
+            <label><input type="radio" name="wmode1" id="w1c"> Custom (raw; normalized)</label>
           </div>
-          <div id="wg1" class="row" style="display:none;flex-wrap:wrap"></div>
+          <div id="wg1" class="grid2" style="display:none"></div>
         </div>
 
-        <div id="b1" class="card dark" style="display:none">
+        <div id="b1" class="card" style="display:none">
           <div class="section-title">Step 4: β (blend of D⁺ and D⁻)</div>
           <input id="beta1" type="range" min="0" max="1" step="0.01" value="0.5" style="width:100%"/>
           <div class="hint mt2">β = <b id="beta1v">0.50</b></div>
-          <button class="btn mt4" id="runSYAI">Run SYAI</button>
+          <button type="button" class="btn mt4" id="runSYAI">Run SYAI</button>
         </div>
       </div>
 
@@ -143,7 +135,7 @@ html = r"""
           <div class="section-title">SYAI Results</div>
           <div class="table-wrap"><table id="tblr1"></table></div>
           <div class="mt6">
-            <div class="hint mb2">Bar Chart (Closeness) — light pastel, axes black</div>
+            <div class="hint mb2">Bar Chart (Closeness) — pastel bars, axes black</div>
             <div class="chart2"><svg id="bar1" width="100%" height="100%"></svg></div>
           </div>
           <div class="mt6">
@@ -155,35 +147,35 @@ html = r"""
     </div>
   </div>
 
-  <!-- ==================== TAB 2: COMPARISON ==================== -->
+  <!-- ================= TAB 2: COMPARISON ================= -->
   <div id="viewCompare" style="display:none">
     <div class="grid">
       <div>
-        <div class="card dark">
+        <div class="card">
           <div class="section-title">Step A: Upload CSV</div>
           <label for="csv2" class="btn">📤 Choose CSV</label>
           <input id="csv2" type="file" accept=".csv" style="display:none"/>
-          <button class="btn mt2" id="demo2">📄 Load Demo CSV</button>
+          <button type="button" class="btn" id="demo2">📄 Load Demo CSV</button>
           <p class="hint mt2">First column is <b>Alternative</b>.</p>
         </div>
 
-        <div id="t2" class="card dark" style="display:none">
+        <div id="t2" class="card" style="display:none">
           <div class="section-title">Step B: Criteria Types</div>
-          <div id="types2" class="row" style="flex-wrap:wrap"></div>
+          <div id="types2" class="grid2"></div>
         </div>
 
-        <div id="w2" class="card dark" style="display:none">
+        <div id="w2" class="card" style="display:none">
           <div class="section-title">Step C: Weights</div>
           <div class="row mb2" style="gap:16px">
             <label><input type="radio" name="wmode2" id="w2eq" checked> Equal (1/m)</label>
             <label><input type="radio" name="wmode2" id="w2c"> Custom (raw; normalized)</label>
           </div>
-          <div id="wg2" class="row" style="display:none;flex-wrap:wrap"></div>
+          <div id="wg2" class="grid2" style="display:none"></div>
         </div>
 
-        <div class="card dark">
+        <div class="card">
           <div class="section-title">Step D: Run</div>
-          <button class="btn" id="runCmp">▶️ Run Comparison</button>
+          <button type="button" class="btn" id="runCmp">▶️ Run Comparison</button>
         </div>
       </div>
 
@@ -227,19 +219,8 @@ html = r"""
 (function(){
   const $ = (id)=> document.getElementById(id);
   const show = (el,on=true)=> el.style.display = on ? "" : "none";
-  const err = (msg)=>{ const e=$("err"); e.textContent="Error: "+msg; e.style.display="block"; };
+  const PASTELS=["#fde2e4","#bee1e6","#cdeac0","#fdfd96","#e2cfea","#bcd4e6","#ffd6a5","#e3f2fd"];
 
-  // theme
-  let light=true;
-  function applyTheme(){
-    document.body.classList.toggle('theme-light', light);
-    document.body.classList.toggle('theme-dark', !light);
-    $("themeToggle").textContent = light ? "☀️ Light" : "🌙 Dark";
-  }
-  $("themeToggle").onclick = ()=>{ light=!light; applyTheme(); };
-  applyTheme();
-
-  // sample CSV (and download link)
   const sampleCSV = `Alternative,Cost,Quality,Delivery
 A1,200,8,4
 A2,250,7,5
@@ -247,8 +228,23 @@ A3,300,9,6
 A4,220,8,4
 A5,180,6,7
 `;
+
+  // download sample link
   $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(sampleCSV);
   $("downloadSample").download = "sample.csv";
+
+  // tab switching (sturdy)
+  function activateSYAI(e){ if(e){e.preventDefault(); e.stopPropagation();}
+    $("tabSYAI").classList.add("active"); $("tabCompare").classList.remove("active");
+    show($("viewSYAI"), true); show($("viewCompare"), false);
+  }
+  function activateCompare(e){ if(e){e.preventDefault(); e.stopPropagation();}
+    $("tabCompare").classList.add("active"); $("tabSYAI").classList.remove("active");
+    show($("viewSYAI"), false); show($("viewCompare"), true);
+  }
+  $("tabSYAI").addEventListener("click", activateSYAI);
+  $("tabCompare").addEventListener("click", activateCompare);
+  activateSYAI();
 
   // CSV helpers
   function parseCSVText(text){
@@ -275,75 +271,34 @@ A5,180,6,7
   const toNum=(v)=>{ const x=parseFloat(String(v).replace(/,/g,"")); return isFinite(x)?x:NaN; };
   function vectorNorm(vals){ const d=Math.sqrt(vals.reduce((s,v)=>s+(v*v),0))||1; return vals.map(v=>v/d); }
 
-  // --- shared UI renderers ---
-  function renderMatrix(tid, cols, rows){
-    const tb=$(tid); tb.innerHTML="";
-    const thead=document.createElement("thead"); const trh=document.createElement("tr");
-    cols.forEach(c=>{ const th=document.createElement("th"); th.textContent=c; trh.appendChild(th); });
-    thead.appendChild(trh); tb.appendChild(thead);
-    const tbody=document.createElement("tbody");
-    rows.slice(0,10).forEach(r=>{
-      const tr=document.createElement("tr");
-      cols.forEach(c=>{ const td=document.createElement("td"); td.textContent=String(r[c]??""); tr.appendChild(td); });
-      tbody.appendChild(tr);
-    });
-    tb.appendChild(tbody);
-  }
-
-  function renderTypes(id, crits, types, ideals){
-    const wrap=$(id); wrap.innerHTML="";
-    crits.forEach(c=>{
-      const box=document.createElement("div"); box.style.minWidth="220px"; box.style.marginRight="12px";
-      const lab=document.createElement("div"); lab.className="label"; lab.textContent=c; box.appendChild(lab);
-      const sel=document.createElement("select");
-      ["Benefit","Cost","Ideal (Goal)"].forEach(v=>{ const o=document.createElement("option"); o.textContent=v; sel.appendChild(o); });
-      sel.value = types[c]||"Benefit";
-      sel.onchange = ()=>{ types[c]=sel.value; renderTypes(id,crits,types,ideals); };
-      box.appendChild(sel);
-      if((types[c]||"")==="Ideal (Goal)"){
-        const inp=document.createElement("input"); inp.className="mt2"; inp.type="number"; inp.step="any"; inp.placeholder="Goal";
-        inp.value=ideals[c]||""; inp.oninput=()=> ideals[c]=inp.value; box.appendChild(inp);
-      } else { delete ideals[c]; }
-      wrap.appendChild(box);
-    });
-  }
-
-  function renderWeights(id, crits, weights){
-    const wrap=$(id); wrap.innerHTML="";
-    crits.forEach(c=>{
-      const box=document.createElement("div"); box.style.minWidth="140px"; box.style.marginRight="12px";
-      const lab=document.createElement("div"); lab.className="label"; lab.textContent="w("+c+")"; box.appendChild(lab);
-      const inp=document.createElement("input"); inp.type="number"; inp.step="0.001"; inp.min="0"; inp.value=weights[c]??0;
-      inp.oninput=()=> weights[c]=inp.value; box.appendChild(inp);
-      wrap.appendChild(box);
-    });
-  }
-
-  // unified utility normalization (kept same for SYAI & comparison)
+  // unified unitization for SYAI space: Benefit/Cost/Goal -> [0.01,1]
   function normalizeColumn(vals, ctype, goal){
     const max=Math.max(...vals), min=Math.min(...vals), R=max-min;
     let xStar;
     if(ctype==="Benefit") xStar=max;
     else if(ctype==="Cost") xStar=min;
-    else { const g=parseFloat(goal); xStar = isFinite(g)? g : (vals.reduce((s,v)=>s+(isFinite(v)?v:0),0)/vals.length); }
+    else {
+      const g=parseFloat(goal);
+      xStar = isFinite(g)? g : (vals.reduce((s,v)=>s+(isFinite(v)?v:0),0)/vals.length);
+    }
     if(Math.abs(R)<1e-12) return vals.map(_=>1.0);
-    // Map to [0.01,1], consistent with your working build
     return vals.map(x=> Math.max(0.01, Math.min(1, 0.01 + (1-0.01)*(1-Math.abs(x-xStar)/R))));
   }
 
-  // ====== TAB 1 (SYAI ONLY) ======
+  // ======== TAB 1 state & UI ========
   let c1=[], r1=[], crit1=[], type1={}, ideal1={}, w1={}, wmode1='equal', beta1=0.5;
-  $("demo1").onclick = ()=> initSYAI(sampleCSV);
-  $("csv1").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>initSYAI(String(rd.result)); rd.readAsText(f); };
+  $("beta1").oninput = ()=>{ beta1=parseFloat($("beta1").value); $("beta1v").textContent=beta1.toFixed(2); };
   $("w1eq").onchange = ()=>{ wmode1='equal'; $("wg1").style.display="none"; };
   $("w1c").onchange  = ()=>{ wmode1='custom'; $("wg1").style.display=""; };
-  $("beta1").oninput = ()=>{ beta1=parseFloat($("beta1").value); $("beta1v").textContent=beta1.toFixed(2); };
+
+  $("demo1").onclick = ()=> initSYAI(sampleCSV);
+  $("csv1").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>initSYAI(String(r.result)); r.readAsText(f); };
 
   function initSYAI(txt){
-    const arr=parseCSVText(txt);
-    c1 = arr[0].map(x=>String(x??"").trim());
+    const arr=parseCSVText(txt); if(!arr.length) return;
+    c1 = arr[0].map(x=> String(x??"").trim());
     if(c1[0] !== "Alternative"){
-      const idx=c1.indexOf("Alternative");
+      const idx = c1.indexOf("Alternative");
       if(idx>0){ const nm=c1.splice(idx,1)[0]; c1.unshift(nm); } else c1[0]="Alternative";
     }
     crit1 = c1.slice(1);
@@ -363,38 +318,32 @@ A5,180,6,7
                  .map(o=> ({Alternative:o.alt, Dp:o.Dp, Dm:o.Dm, Close:o.Close}));
     res.sort((a,b)=> b.Close-a.Close);
     res.forEach((r,i)=> r.Rank = i+1);
-
-    // table
     const tb=$("tblr1"); tb.innerHTML="";
-    const thead=document.createElement("thead"); const trh=document.createElement("tr");
-    ["Alternative","D+","D-","Closeness","Rank"].forEach(h=>{ const th=document.createElement("th"); th.textContent=h; trh.appendChild(th); });
-    thead.appendChild(trh); tb.appendChild(thead);
+    const thead=document.createElement("thead"); thead.innerHTML="<tr><th>Alternative</th><th>D+</th><th>D-</th><th>Closeness</th><th>Rank</th></tr>"; tb.appendChild(thead);
     const tbody=document.createElement("tbody");
     res.forEach(r=>{
       const tr=document.createElement("tr");
-      [r.Alternative, r.Dp.toFixed(6), r.Dm.toFixed(6), r.Close.toFixed(6), r.Rank].forEach(v=>{
-        const td=document.createElement("td"); td.textContent=String(v); tr.appendChild(td);
-      });
+      tr.innerHTML = `<td>${r.Alternative}</td><td>${r.Dp.toFixed(6)}</td><td>${r.Dm.toFixed(6)}</td><td>${r.Close.toFixed(6)}</td><td>${r.Rank}</td>`;
       tbody.appendChild(tr);
     });
     tb.appendChild(tbody);
     show($("r1"),true);
-
-    // charts (pastel colors)
     drawSimpleBar("bar1", res.map(d=>({name:d.Alternative, value:d.Close})));
     drawSimpleLine("line1", res.map(d=>({rank:d.Rank, value:d.Close, name:d.Alternative})));
   };
 
-  // ====== TAB 2 (COMPARISON) ======
+  // ======== TAB 2 state & UI ========
   let c2=[], r2=[], crit2=[], type2={}, ideal2={}, w2={}, wmode2='equal';
-  $("demo2").onclick = ()=> initCmp(sampleCSV);
-  $("csv2").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>initCmp(String(rd.result)); rd.readAsText(f); };
   $("w2eq").onchange = ()=>{ wmode2='equal'; $("wg2").style.display="none"; };
   $("w2c").onchange  = ()=>{ wmode2='custom'; $("wg2").style.display=""; };
 
+  $("demo2").onclick = ()=> initCmp(sampleCSV);
+  $("csv2").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>initCmp(String(r.result)); r.readAsText(f); };
+  $("runCmp").onclick = ()=> runComparison();
+
   function initCmp(txt){
-    const arr=parseCSVText(txt);
-    c2 = arr[0].map(x=>String(x??"").trim());
+    const arr=parseCSVText(txt); if(!arr.length) return;
+    c2 = arr[0].map(x=> String(x??"").trim());
     if(c2[0] !== "Alternative"){
       const idx=c2.indexOf("Alternative");
       if(idx>0){ const nm=c2.splice(idx,1)[0]; c2.unshift(nm); } else c2[0]="Alternative";
@@ -410,48 +359,94 @@ A5,180,6,7
     show($("m2"),true); show($("t2"),true); show($("w2"),true); show($("rcmp"),false);
   }
 
-  // ---------------------- CORE METHODS ----------------------
+  // ------- shared renderers -------
+  function renderMatrix(tid, cols, rows){
+    const tb=$(tid); tb.innerHTML="";
+    const thead=document.createElement("thead"); const trh=document.createElement("tr");
+    cols.forEach(c=>{ const th=document.createElement("th"); th.textContent=c; trh.appendChild(th); });
+    thead.appendChild(trh); tb.appendChild(thead);
+    const tbody=document.createElement("tbody");
+    rows.slice(0,10).forEach(r=>{
+      const tr=document.createElement("tr");
+      cols.forEach(c=>{ const td=document.createElement("td"); td.textContent=String(r[c]??""); tr.appendChild(td); });
+      tbody.appendChild(tr);
+    });
+    tb.appendChild(tbody);
+  }
+  function renderTypes(id, crits, types, ideals){
+    const wrap=$(id); wrap.innerHTML="";
+    crits.forEach(c=>{
+      const box=document.createElement("div");
+      const lab=document.createElement("div"); lab.className="label"; lab.textContent=c; box.appendChild(lab);
+      const sel=document.createElement("select");
+      ["Benefit","Cost","Ideal (Goal)"].forEach(v=>{ const o=document.createElement("option"); o.textContent=v; sel.appendChild(o); });
+      sel.value = types[c]||"Benefit";
+      sel.onchange = ()=>{ types[c]=sel.value; renderTypes(id,crits,types,ideals); };
+      box.appendChild(sel);
+      if((types[c]||"")==="Ideal (Goal)"){
+        const inp=document.createElement("input"); inp.className="mt2"; inp.type="number"; inp.step="any"; inp.placeholder="Goal";
+        inp.value=ideals[c]||""; inp.oninput=()=> ideals[c]=inp.value; box.appendChild(inp);
+      } else { delete ideals[c]; }
+      wrap.appendChild(box);
+    });
+  }
+  function renderWeights(id, crits, weights){
+    const wrap=$(id); wrap.innerHTML="";
+    crits.forEach(c=>{
+      const box=document.createElement("div");
+      const lab=document.createElement("div"); lab.className="label"; lab.textContent="w("+c+")"; box.appendChild(lab);
+      const inp=document.createElement("input"); inp.type="number"; inp.step="0.001"; inp.min="0"; inp.value=weights[c]??0;
+      inp.oninput=()=> weights[c]=inp.value; box.appendChild(inp);
+      wrap.appendChild(box);
+    });
+  }
+
+  // ============= CORE COMPUTATIONS =============
+  // SYAI core (kept exactly as your working formula)
   function computeSYAI(rows, crits, types, ideals, weights, wmode, beta){
     const X = rows.map(r=> Object.fromEntries(crits.map(c=>[c, toNum(r[c])])) );
-    // utilities in [0.01,1]
+
+    // utilities [0.01,1]
     const U={}; crits.forEach(c=>{ U[c] = normalizeColumn(X.map(row=>row[c]), types[c]||"Benefit", ideals[c]); });
+
     // weights
     const w={};
     if(wmode==='equal'){ crits.forEach(c=> w[c]=1/crits.length); }
     else{ let s=0; crits.forEach(c=>{ const v=Math.max(0,parseFloat(weights[c]||0)); w[c]=isFinite(v)?v:0; s+=w[c]; });
           if(s<=0) crits.forEach(c=> w[c]=1/crits.length); else crits.forEach(c=> w[c]/=s); }
-    // weighted utility
+
+    // weighted-utility matrix
     const W = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, U[c][i]*w[c]])) );
     const Aplus={}, Aminus={};
     crits.forEach(c=>{
       const arr=W.map(r=>r[c]); Aplus[c]=Math.max(...arr); Aminus[c]=Math.min(...arr);
     });
-    const out = rows.map((r,i)=>{
+
+    return rows.map((r,i)=>{
       let Dp=0, Dm=0;
       crits.forEach(c=>{ Dp+=Math.abs(W[i][c]-Aplus[c]); Dm+=Math.abs(W[i][c]-Aminus[c]); });
       const denom = beta*Dp + (1-beta)*Dm || Number.EPSILON;
       const Close = ((1-beta)*Dm)/denom;
       return { alt:String(r["Alternative"]), Dp, Dm, Close, Urow:Object.fromEntries(crits.map(c=>[c,U[c][i]])), w };
     });
-    // include U & w for other methods reuse
-    out.U = U; out.w = w; out.rows = rows; out.crits = crits; out.types = types;
-    return out;
   }
 
   function runComparison(){
     if(!r2.length) return;
-    const sy = computeSYAI(r2, crit2, type2, ideal2, w2, wmode2, 0.5); // beta=0.5 for comparison
-    const U = sy.U, w = sy.w;
 
-    // ------- SAW -------
+    // SYAI (beta=0.5 for comparison screen)
+    const sy = computeSYAI(r2, crit2, type2, ideal2, w2, wmode2, 0.5);
+    const U = Object.fromEntries(crit2.map(c=>[c, sy[0].Urow ? sy.map(o=>o.Urow[c]) : sy.map((_,i)=>0)]));
+    const w = sy[0].w;
+
+    // SAW (WSM on U)
     const SAW = r2.map((_,i)=> crit2.reduce((s,c)=> s + w[c]*U[c][i], 0));
 
-    // ------- WASPAS (WSM + WPM) -------
-    const WSM = SAW.slice();
+    // WASPAS
     const WPM = r2.map((_,i)=> crit2.reduce((p,c)=> p * Math.pow(Math.max(U[c][i],1e-12), w[c]), 1));
-    const WASPAS = r2.map((_,i)=> 0.5*WSM[i] + 0.5*WPM[i]);
+    const WASPAS = r2.map((_,i)=> 0.5*SAW[i] + 0.5*WPM[i]);
 
-    // ------- MOORA (vector norm, goal → use U) -------
+    // MOORA (vector norm; goal uses U)
     const NV={}; crit2.forEach(c=>{
       const raw = r2.map(r=> toNum(r[c]));
       NV[c] = ( (type2[c]||"Benefit")==="Ideal (Goal)") ? U[c] : vectorNorm(raw);
@@ -459,31 +454,32 @@ A5,180,6,7
     const MOORA = r2.map((_,i)=>{
       let sumB=0, sumC=0;
       crit2.forEach(c=>{
-        if((type2[c]||"Benefit")==="Cost") sumC+=w[c]*NV[c][i]; else sumB+=w[c]*NV[c][i];
+        if((type2[c]||"Benefit")==="Cost") sumC += w[c]*NV[c][i];
+        else sumB += w[c]*NV[c][i];
       });
-      return sumB - sumC; // can be negative
+      return sumB - sumC;
     });
 
-    // ------- TOPSIS -------
+    // TOPSIS (vector norm space)
     const Nt={}; crit2.forEach(c=>{ Nt[c]=vectorNorm(r2.map(r=> toNum(r[c]))); });
     const Wt = r2.map((_,i)=> Object.fromEntries(crit2.map(c=>[c, Nt[c][i]*w[c]])) );
-    const Aplus={}, Aminus={}; crit2.forEach(c=>{
+    const Aplus_t={}, Aminus_t={}; crit2.forEach(c=>{
       const arr=Wt.map(r=>r[c]);
-      if((type2[c]||"Benefit")==="Cost"){ Aplus[c]=Math.min(...arr); Aminus[c]=Math.max(...arr); }
-      else{ Aplus[c]=Math.max(...arr); Aminus[c]=Math.min(...arr); }
+      if((type2[c]||"Benefit")==="Cost"){ Aplus_t[c]=Math.min(...arr); Aminus_t[c]=Math.max(...arr); }
+      else { Aplus_t[c]=Math.max(...arr); Aminus_t[c]=Math.min(...arr); }
     });
     const TOPSIS = r2.map((_,i)=>{
       let dp=0, dm=0;
-      crit2.forEach(c=>{ const v=Wt[i][c]; dp+=(v-Aplus[c])**2; dm+=(v-Aminus[c])**2; });
+      crit2.forEach(c=>{ const v=Wt[i][c]; dp+=(v-Aplus_t[c])**2; dm+=(v-Aminus_t[c])**2; });
       dp=Math.sqrt(dp); dm=Math.sqrt(dm);
       return dm/((dp+dm)||1e-12);
     });
 
-    // ------- VIKOR (lower better) -------
+    // VIKOR (lower better)
     const fStar={}, fMin={}; crit2.forEach(c=>{
       const vals=r2.map(r=> toNum(r[c]));
       if((type2[c]||"Benefit")==="Cost"){ fStar[c]=Math.min(...vals); fMin[c]=Math.max(...vals); }
-      else{ fStar[c]=Math.max(...vals); fMin[c]=Math.min(...vals); }
+      else { fStar[c]=Math.max(...vals); fMin[c]=Math.min(...vals); }
     });
     const S = r2.map(r=> crit2.reduce((s,c)=>{
       const denom = Math.abs(fStar[c]-fMin[c])||1;
@@ -500,15 +496,15 @@ A5,180,6,7
     const Smin=Math.min(...S), Smax=Math.max(...S), Rmin=Math.min(...R), Rmax=Math.max(...R);
     const VIKOR = S.map((_,i)=> 0.5*((S[i]-Smin)/((Smax-Smin)||1)) + 0.5*((R[i]-Rmin)/((Rmax-Rmin)||1)));
 
-    // ------- SYAI (from compute) -------
+    // SYAI scores from compute
     const SYAI = sy.map(o=> o.Close);
 
-    // ------- COBRA (FIXED as requested)
-    // Distance to ideal in SAW-unit space (z in [0.01,1]); ideal = 1 for all criteria
-    // Use weighted (1 - z), sum across criteria, then mean-center so it can be negative (lower=better)
+    // *** COBRA (ADJUSTED) ***
+    // Weighted distance to ideal in SYAI (SAW-unit) space: di = sum_c w_c * (1 - U_ic)
+    // Center it: COBRA_i = di - mean(di). Lower = better, may be negative.
     const d = r2.map((_,i)=> crit2.reduce((s,c)=> s + w[c]*(1 - U[c][i]), 0));
     const meanD = d.reduce((s,v)=>s+v,0)/d.length;
-    const COBRA = d.map(v=> v - meanD); // centered: <0 better; matches your negative possibility
+    const COBRA = d.map(v=> v - meanD);
 
     // ranks
     function ranksHigher(a){ const idx=a.map((v,i)=>({v,i})).sort((x,y)=> y.v-x.v); const rk=new Array(a.length); idx.forEach((o,k)=> rk[o.i]=k+1); return rk; }
@@ -518,7 +514,7 @@ A5,180,6,7
     const ranks={ TOPSIS:ranksHigher(TOPSIS), VIKOR:ranksLower(VIKOR), SAW:ranksHigher(SAW),
                   SYAI:ranksHigher(SYAI), COBRA:ranksLower(COBRA), WASPAS:ranksHigher(WASPAS), MOORA:ranksHigher(MOORA) };
 
-    // render table
+    // Render table
     const order=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
     const tb=$("mmc_table"); tb.innerHTML="";
     const thead=document.createElement("thead"); const trh=document.createElement("tr");
@@ -536,17 +532,13 @@ A5,180,6,7
     tb.appendChild(tbody);
     show($("rcmp"),true);
 
+    // Charts
     drawCmpBars(methods, ranks, r2.map(r=> String(r["Alternative"])));
-    const res={methods, names:r2.map(r=> String(r["Alternative"]))};
-    drawCmpScatter(res, $("mmc_x").value, $("mmc_y").value);
-    drawHeatSpearman(res);  // Spearman like your paper
+    drawCmpScatter({methods, names:r2.map(r=> String(r["Alternative"]))}, $("mmc_x").value, $("mmc_y").value);
+    drawHeatSpearman({methods});
   }
 
-  $("runCmp").onclick = runComparison;
-
-  // ---------------------- CHARTS ----------------------
-  const PASTELS=["#fde2e4","#bee1e6","#cdeac0","#fdfd96","#e2cfea","#bcd4e6","#ffd6a5"];
-
+  // ======== Charts & Heatmap ========
   function drawSimpleBar(svgId, data){
     const svg=$(svgId); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const W=(svg.getBoundingClientRect().width||800), H=(svg.getBoundingClientRect().height||360);
@@ -555,19 +547,16 @@ A5,180,6,7
     const max=Math.max(...data.map(d=>d.value))||1;
     const cell=(W-padL-padR)/data.length, barW=cell*0.8;
 
-    // axes in black
+    // axes (black)
     const yAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
-    yAxis.setAttribute("x1",padL); yAxis.setAttribute("x2",padL);
-    yAxis.setAttribute("y1",padT); yAxis.setAttribute("y2",H-padB); yAxis.setAttribute("stroke","#000"); svg.appendChild(yAxis);
+    yAxis.setAttribute("x1",padL); yAxis.setAttribute("x2",padL); yAxis.setAttribute("y1",padT); yAxis.setAttribute("y2",H-padB); yAxis.setAttribute("stroke","#000"); svg.appendChild(yAxis);
     const xAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
-    xAxis.setAttribute("x1",padL); xAxis.setAttribute("x2",W-padR);
-    xAxis.setAttribute("y1",H-padB); xAxis.setAttribute("y2",H-padB); xAxis.setAttribute("stroke","#000"); svg.appendChild(xAxis);
+    xAxis.setAttribute("x1",padL); xAxis.setAttribute("x2",W-padR); xAxis.setAttribute("y1",H-padB); xAxis.setAttribute("y2",H-padB); xAxis.setAttribute("stroke","#000"); svg.appendChild(xAxis);
 
     for(let t=0;t<=5;t++){
       const val=max*t/5, y=H-padB-(H-padT-padB)*(val/max);
       const gl=document.createElementNS("http://www.w3.org/2000/svg","line");
-      gl.setAttribute("x1",padL); gl.setAttribute("x2",W-padR);
-      gl.setAttribute("y1",y); gl.setAttribute("y2",y);
+      gl.setAttribute("x1",padL); gl.setAttribute("x2",W-padR); gl.setAttribute("y1",y); gl.setAttribute("y2",y);
       gl.setAttribute("stroke","#000"); gl.setAttribute("stroke-dasharray","3 3"); svg.appendChild(gl);
       const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
       tx.setAttribute("x",padL-10); tx.setAttribute("y",y+4); tx.setAttribute("text-anchor","end");
@@ -594,12 +583,14 @@ A5,180,6,7
     const sx=(r)=> padL+(W-padL-padR)*((r-minX)/(maxX-minX||1));
     const sy=(v)=> H-padB-(H-padT-padB)*(v/maxY);
 
+    // axes
     const yAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
     yAxis.setAttribute("x1",padL); yAxis.setAttribute("x2",padL); yAxis.setAttribute("y1",padT); yAxis.setAttribute("y2",H-padB); yAxis.setAttribute("stroke","#000"); svg.appendChild(yAxis);
     const xAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
     xAxis.setAttribute("x1",padL); xAxis.setAttribute("x2",W-padR); xAxis.setAttribute("y1",H-padB); xAxis.setAttribute("y2",H-padB); xAxis.setAttribute("stroke","#000"); svg.appendChild(xAxis);
 
-    const p=document.createElementNS("http://www.w3.org/2000/svg","path"); let dstr="";
+    const p=document.createElementNS("http://www.w3.org/2000/svg","path");
+    let dstr="";
     data.sort((a,b)=> a.rank-b.rank).forEach((pt,i)=>{
       const x=sx(pt.rank), y=sy(pt.value);
       dstr += (i===0? "M":"L")+x+" "+y+" ";
@@ -609,14 +600,8 @@ A5,180,6,7
       t.setAttribute("x",x+6); t.setAttribute("y",y-6); t.setAttribute("font-size","12"); t.setAttribute("fill","#000");
       t.textContent=pt.value.toFixed(3); svg.appendChild(t);
     });
-    p.setAttribute("d", dstr.trim()); p.setAttribute("fill","none"); p.setAttribute("stroke","#64748b"); p.setAttribute("stroke-width","2"); svg.appendChild(p);
-
-    for(let r=1;r<=maxX;r++){
-      const x=sx(r);
-      const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
-      tx.setAttribute("x",x); tx.setAttribute("y",H-8); tx.setAttribute("text-anchor","middle"); tx.setAttribute("font-size","12"); tx.setAttribute("fill","#000");
-      tx.textContent=String(r); svg.appendChild(tx);
-    }
+    p.setAttribute("d", dstr.trim()); p.setAttribute("fill","none"); p.setAttribute("stroke","#64748b"); p.setAttribute("stroke-width","2");
+    svg.appendChild(p);
   }
 
   function drawCmpBars(methods, ranks, names){
@@ -629,14 +614,15 @@ A5,180,6,7
     const max = Math.max(...vals.flat()), min = Math.min(...vals.flat());
     const yMin=Math.min(min,0), yMax=Math.max(max,0), range=(yMax-yMin)||1;
 
-    // axes (black)
+    // axes
     const yAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
     yAxis.setAttribute("x1",padL); yAxis.setAttribute("x2",padL); yAxis.setAttribute("y1",padT); yAxis.setAttribute("y2",H-padB); yAxis.setAttribute("stroke","#000"); svg.appendChild(yAxis);
     const xAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
     xAxis.setAttribute("x1",padL); xAxis.setAttribute("x2",W-padR); xAxis.setAttribute("y1",H-padB); xAxis.setAttribute("y2",H-padB); xAxis.setAttribute("stroke","#000"); svg.appendChild(xAxis);
 
     for(let t=0;t<=5;t++){
-      const val=yMin + range*t/5; const y=H-padB - (H-padT-padB)*((val-yMin)/range);
+      const val=yMin + range*t/5;
+      const y=H-padB - (H-padT-padB)*((val-yMin)/range);
       const gl=document.createElementNS("http://www.w3.org/2000/svg","line");
       gl.setAttribute("x1",padL); gl.setAttribute("x2",W-padR); gl.setAttribute("y1",y); gl.setAttribute("y2",y);
       gl.setAttribute("stroke","#000"); gl.setAttribute("stroke-dasharray","3 3"); svg.appendChild(gl);
@@ -661,15 +647,16 @@ A5,180,6,7
         rect.setAttribute("x",x0 + k*barW); rect.setAttribute("y",h>=0? y : H-padB);
         rect.setAttribute("width",barW-1.5); rect.setAttribute("height",Math.abs(h));
         rect.setAttribute("fill", PASTELS[k%PASTELS.length]); svg.appendChild(rect);
+        // rank label only
         const t=document.createElementNS("http://www.w3.org/2000/svg","text");
         t.setAttribute("x",x0 + k*barW + (barW-1.5)/2); t.setAttribute("y",(h>=0? y : H-padB)-4);
         t.setAttribute("text-anchor","middle"); t.setAttribute("font-size","11"); t.setAttribute("fill","#000");
-        t.textContent=String(ranks[m][i]); svg.appendChild(t);
+        t.textContent = String((m==="VIKOR"||m==="COBRA")? (methods[m].slice().sort((a,b)=>a-b).indexOf(v)+1) : (methods[m].slice().sort((a,b)=>b-a).indexOf(v)+1));
+        svg.appendChild(t);
       });
     });
   }
 
-  // scatter with Pearson r line (axes black)
   function drawCmpScatter(res, mx, my){
     const svg=$("mmc_sc"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const W=(svg.getBoundingClientRect().width||900), H=(svg.getBoundingClientRect().height||360);
@@ -679,6 +666,7 @@ A5,180,6,7
     const Xmin=Math.min(...xs), Xmax=Math.max(...xs), Ymin=Math.min(...ys), Ymax=Math.max(...ys);
     const sx=(x)=> padL + (W-padL-padR)*((x-Xmin)/((Xmax-Xmin)||1));
     const sy=(y)=> H-padB - (H-padT-padB)*((y-Ymin)/((Ymax-Ymin)||1));
+
     const ax=document.createElementNS("http://www.w3.org/2000/svg","line");
     ax.setAttribute("x1",padL); ax.setAttribute("x2",padL); ax.setAttribute("y1",padT); ax.setAttribute("y2",H-padB); ax.setAttribute("stroke","#000"); svg.appendChild(ax);
     const ay=document.createElementNS("http://www.w3.org/2000/svg","line");
@@ -706,7 +694,7 @@ A5,180,6,7
     cap.setAttribute("font-size","12"); cap.setAttribute("fill","#000"); cap.textContent="Pearson r = "+r.toFixed(3); svg.appendChild(cap);
   }
 
-  // Spearman heatmap like your paper (white→navy)
+  // Spearman heatmap (white -> navy)
   function drawHeatSpearman(res){
     const methods=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
     const svg=$("mmc_heat"); while(svg.firstChild) svg.removeChild(svg.firstChild);
@@ -715,25 +703,18 @@ A5,180,6,7
     const padL=110, padR=20, padT=55, padB=80;
     const n=methods.length;
 
-    // rank helper
     function rankArray(a){
       const idx=a.map((v,i)=>({v,i})).sort((x,y)=> x.v-y.v);
       const r=new Array(a.length); let i=0;
       while(i<idx.length){
-        let j=i;
-        while(j+1<idx.length && idx[j+1].v===idx[i].v) j++;
-        const avg=(i+j)/2 + 1;
-        for(let k=i;k<=j;k++) r[idx[k].i]=avg;
-        i=j+1;
+        let j=i; while(j+1<idx.length && idx[j+1].v===idx[i].v) j++;
+        const avg=(i+j)/2 + 1; for(let k=i;k<=j;k++) r[idx[k].i]=avg; i=j+1;
       }
       return r;
     }
-
     function pearson(x,y){
-      const n=x.length;
-      const mx=x.reduce((s,v)=>s+v,0)/n, my=y.reduce((s,v)=>s+v,0)/n;
-      let num=0, dx=0, dy=0;
-      for(let i=0;i<n;i++){ const a=x[i]-mx, b=y[i]-my; num+=a*b; dx+=a*a; dy+=b*b; }
+      const n=x.length; const mx=x.reduce((s,v)=>s+v,0)/n, my=y.reduce((s,v)=>s+v,0)/n;
+      let num=0, dx=0, dy=0; for(let i=0;i<n;i++){ const a=x[i]-mx, b=y[i]-my; num+=a*b; dx+=a*a; dy+=b*b; }
       return num/Math.sqrt((dx||1)*(dy||1));
     }
 
@@ -741,18 +722,16 @@ A5,180,6,7
     const ranks = data.map(arr=> rankArray(arr));
     const R = methods.map((_,i)=> methods.map((_,j)=> pearson(ranks[i], ranks[j])));
 
-    // color: r in [0,1] → white (0) to navy (1)
-    function colorFor(r){
-      const v=Math.max(0, Math.min(1, (r+1)/2)); // ensure 0..1 even if tiny negatives
-      const b = Math.round(255 * v);
-      const g = Math.round(255 * (1 - v*0.85));
-      const rw = Math.round(255 * (1 - v));
-      return "rgb("+rw+","+g+","+b+")";
+    function colorFor(v){ // v in [-1,1] -> white to navy
+      const t = Math.max(0, Math.min(1, (v+1)/2)); // 0..1
+      const r = Math.round(255*(1-t));
+      const g = Math.round(255*(1-0.85*t));
+      const b = Math.round(255*t);
+      return "rgb("+r+","+g+","+b+")";
     }
 
     const cellW=(W-padL-padR)/n, cellH=(H-padT-padB)/n;
 
-    // labels (axes black-like)
     for(let i=0;i<n;i++){
       const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
       tx.setAttribute("x", padL + i*cellW + cellW/2); tx.setAttribute("y", padT-12);
@@ -769,25 +748,26 @@ A5,180,6,7
         const x=padL + j*cellW, y=padT + i*cellH;
         const rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
         rect.setAttribute("x",x); rect.setAttribute("y",y); rect.setAttribute("width",cellW-1); rect.setAttribute("height",cellH-1);
-        rect.setAttribute("fill", colorFor((r+1)/2)); rect.setAttribute("stroke","#000"); rect.setAttribute("stroke-width","0.3"); svg.appendChild(rect);
+        rect.setAttribute("fill", colorFor(r)); rect.setAttribute("stroke","#000"); rect.setAttribute("stroke-width","0.3"); svg.appendChild(rect);
       }
     }
   }
 
-  // events
+  // helpers for charts
+  function drawCmpScatterWrapper(){ /* redrawn in runComparison */ }
   $("mmc_x").onchange = ()=> runComparison();
   $("mmc_y").onchange = ()=> runComparison();
-  window.addEventListener("resize", ()=>{ /* redraws happen on run */ });
+
 })();
 </script>
 </body>
 </html>
 """
 
-# Inject image URIs just in case you later use the static image slots
+# inject image placeholders (if you later use them)
 html = html.replace("SCATTER_DATA_URI", SCATTER_URI or "")
 html = html.replace("CORR_DATA_URI", CORR_URI or "")
 html = html.replace("HAS_SCATTER_FLAG", "1" if SCATTER_FOUND else "0")
 html = html.replace("HAS_CORR_FLAG", "1" if CORR_FOUND else "0")
 
-components.html(html, height=3600, scrolling=True)
+components.html(html, height=3700, scrolling=True)
