@@ -804,7 +804,9 @@ A5,180,6,7,40
     } else { columns[0]="Alternative"; }
     crits = columns.slice(1);
     rows = arr.slice(1).filter(r=>r.length>=columns.length).map(r=>{
-      const o={}; columns.forEach((c,i)=> o[c]=r[i] ?? ""; ); return o;
+      const o={};
+      columns.forEach((c,i)=> { o[c]=r[i] ?? ""; });
+      return o;
     });
 
     types  = Object.fromEntries(crits.map(c=>[c,"Benefit"]));
@@ -850,7 +852,7 @@ A5,180,6,7,40
     if(ctype==="Cost"){    return vals.map(x=> (max-x)/R); }
     const g=parseFloat(goal); const gStar = isFinite(g)?g : (min+max)/2;
     const L=Math.max(gStar-min, max-gStar)||1;
-    return vals.map(x=> 1 - (Math.abs(x-gStar)/L) );
+    return vals.map(x=> 1 - (Math.abs(x-gStar)/L) ); // [0,1], peak at goal
   }
   function normSYAI(vals, ctype, goal){
     const max=Math.max(...vals), min=Math.min(...vals), R=max-min;
@@ -861,11 +863,11 @@ A5,180,6,7,40
     if(Math.abs(R)<1e-12) return vals.map(_=>1.0);
     return vals.map(x=> Math.max(0.01, Math.min(1, 0.01 + (1-0.01)*(1-Math.abs(x-xStar)/R))));
   }
-  function normVector(vals){
+  function normVector(vals){ // for TOPSIS vector normalization
     const denom=Math.sqrt(vals.reduce((s,v)=>s+(isFinite(v)?v*v:0),0))||1;
     return vals.map(v=> (isFinite(v)?v:0)/denom);
   }
-  function toBenefit(vals, ctype, goal){
+  function toBenefit(vals, ctype, goal){ // transform raw -> benefit-oriented utility in [0,1]
     const max=Math.max(...vals), min=Math.min(...vals), R=max-min || 1;
     if(ctype==="Benefit") return vals.map(x=> (x-min)/R);
     if(ctype==="Cost")    return vals.map(x=> (max-x)/R);
@@ -888,14 +890,15 @@ A5,180,6,7,40
       if(s<=0) crits.forEach(c=> w[c]=1/crits.length); else crits.forEach(c=> w[c]/=s);
     }
 
+    // arrays per criterion
     const series = Object.fromEntries(crits.map(c=>[c, X.map(r=>r[c])]));
 
-    // SAW
+    // ---------- SAW ----------
     const N_saw={};
     crits.forEach(c=> N_saw[c]=normSAW(series[c], types[c]||"Benefit", ideals[c]) );
     const SAW = rows.map((_,i)=> crits.reduce((sum,c)=> sum + w[c]*N_saw[c][i], 0));
 
-    // SYAI
+    // ---------- SYAI ----------
     const N_sy={};
     crits.forEach(c=> N_sy[c]=normSYAI(series[c], types[c]||"Benefit", ideals[c]) );
     const W_sy = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c,N_sy[c][i]*w[c]])) );
@@ -909,10 +912,10 @@ A5,180,6,7,40
       let Dp=0, Dm=0;
       crits.forEach(c=>{ Dp+=Math.abs(W_sy[i][c]-Aplus_sy[c]); Dm+=Math.abs(W_sy[i][c]-Aminus_sy[c]); });
       const denom = beta*Dp + (1-beta)*Dm || Number.EPSILON;
-      return ((1-beta)*Dm)/denom;
+      return ((1-beta)*Dm)/denom; // higher is better
     });
 
-    // TOPSIS
+    // ---------- TOPSIS ----------
     const N_tp={}, W_tp_rows=[];
     crits.forEach(c=> N_tp[c]=normVector(series[c]) );
     rows.forEach((_,i)=> W_tp_rows.push(Object.fromEntries(crits.map(c=>[c,N_tp[c][i]*w[c]]))) );
@@ -934,10 +937,10 @@ A5,180,6,7,40
       let Dp=0, Dm=0;
       crits.forEach(c=>{ const d=W_tp_rows[i][c]; Dp+= (d-Aplus_tp[c])**2; Dm+= (d-Aminus_tp[c])**2; });
       Dp=Math.sqrt(Dp); Dm=Math.sqrt(Dm);
-      return Dm/(Dp+Dm);
+      return Dm/(Dp+Dm); // higher better
     });
 
-    // VIKOR (lower better)
+    // ---------- VIKOR (lower Q is better) ----------
     const U={};
     crits.forEach(c=> U[c]=toBenefit(series[c], types[c]||"Benefit", ideals[c]));
     const S = rows.map((_,i)=> crits.reduce((sum,c)=> sum + w[c]*(1-U[c][i]), 0));
@@ -946,27 +949,27 @@ A5,180,6,7,40
     const VIKOR = rows.map((_,i)=>{
       const sN=(S[i]-Smin)/((Smax-Smin)||1);
       const rN=(R[i]-Rmin)/((Rmax-Rmin)||1);
-      return vikor_v*sN + (1-vikor_v)*rN;
+      return vikor_v*sN + (1-vikor_v)*rN; // lower is better
     });
 
-    // COBRA (distance diff on U)
+    // ---------- COBRA (distance-based; can be ± small) ----------
     const COBRA = rows.map((_,i)=>{
       let diPlus=0, diMinus=0;
       crits.forEach(c=>{
         const z=U[c][i];
-        diPlus  += w[c]*(1 - z)**2;
-        diMinus += w[c]*(z - 0)**2;
+        diPlus  += w[c]*(1 - z)**2; // distance to ideal
+        diMinus += w[c]*(z - 0)**2; // distance to anti-ideal
       });
       diPlus=Math.sqrt(diPlus); diMinus=Math.sqrt(diMinus);
-      return diMinus - diPlus; // higher better
+      return diMinus - diPlus; // can be negative/positive; higher better
     });
 
-    // WASPAS
+    // ---------- WASPAS ----------
     const WSM = rows.map((_,i)=> crits.reduce((sum,c)=> sum + w[c]*U[c][i], 0));
     const WPM = rows.map((_,i)=> crits.reduce((prod,c)=> prod * Math.pow(Math.max(U[c][i],1e-12), w[c]), 1));
-    const WASPAS = rows.map((_,i)=> waspas_l*WSM[i] + (1-waspas_l)*WPM[i]);
+    const WASPAS = rows.map((_,i)=> waspas_l*WSM[i] + (1-waspas_l)*WPM[i]); // higher better
 
-    // MOORA
+    // ---------- MOORA ----------
     const normPerC = Object.fromEntries(crits.map(c=>{
       const v=series[c]; const denom=Math.sqrt(v.reduce((s,x)=>s+(isFinite(x)?x*x:0),0))||1;
       return [c, v.map(x=> (isFinite(x)?x:0)/denom)];
@@ -976,15 +979,14 @@ A5,180,6,7,40
       crits.forEach(c=>{
         if((types[c]||"Benefit")==="Cost") neg += w[c]*normPerC[c][i];
         else if((types[c]||"Benefit")==="Ideal (Goal)"){
-          // treat goal as benefit proximity (simple)
           const g=parseFloat(ideals[c]); const goal = isFinite(g)?g : 0;
-          pos += w[c]*(1 - Math.abs(normPerC[c][i]-goal)); 
+          pos += w[c]*(1 - Math.abs(normPerC[c][i]-goal)); // simple proximity as benefit
         } else pos += w[c]*normPerC[c][i];
       });
-      return pos - neg;
+      return pos - neg; // can be negative
     });
 
-    // Ranks
+    // ---------- Ranks ----------
     function ranksHigherBetter(arr){
       const idx=arr.map((v,i)=>({v,i})).sort((a,b)=> b.v-a.v);
       const rank=new Array(arr.length).fill(0);
@@ -1014,7 +1016,7 @@ A5,180,6,7,40
     };
   }
 
-  // Render table score (rank)
+  // ---------- Render table like: value (rank) ----------
   function renderTable(res){
     const tb=$("mmc_table"); tb.innerHTML="";
     const head=["Alternative","TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
@@ -1034,7 +1036,7 @@ A5,180,6,7,40
         td.textContent = `${val.toFixed(decimals)} (${rank})`;
         tr.appendChild(td);
       }
-      // column order to match the screenshot
+      // column order to match screenshot
       cell("TOPSIS"); cell("VIKOR"); cell("SAW");
       cell("SYAI");   cell("COBRA",4); cell("WASPAS",4); cell("MOORA",4);
 
@@ -1043,7 +1045,7 @@ A5,180,6,7,40
     tb.appendChild(tbody);
   }
 
-  // Charts
+  // ---------- Charts ----------
   function drawGroupedBar(res){
     const svg=$("mmc_bar"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const rect=svg.getBoundingClientRect();
@@ -1064,6 +1066,7 @@ A5,180,6,7,40
     const cell=(W-padL-padR)/data.length;
     const barW=cell*0.75/methods.length;
 
+    // grid lines
     for(let t=0;t<=5;t++){
       const val=yMin + range*t/5;
       const y=H-padB-(H-padT-padB)*((val - yMin)/range);
@@ -1077,6 +1080,7 @@ A5,180,6,7,40
 
     data.forEach((d,i)=>{
       const x0=padL+i*cell + (cell - barW*methods.length)/2;
+      // label
       const lbl=document.createElementNS("http://www.w3.org/2000/svg","text");
       lbl.setAttribute("x",x0 + (barW*methods.length)/2);
       lbl.setAttribute("y",H-8); lbl.setAttribute("text-anchor","middle"); lbl.setAttribute("font-size","12"); lbl.setAttribute("fill","#f5f5f5");
@@ -1093,6 +1097,7 @@ A5,180,6,7,40
       });
     });
 
+    // legend
     methods.forEach((m,i)=>{
       const y=padT+12 + i*16, x=W-padR-160;
       const sw=document.createElementNS("http://www.w3.org/2000/svg","rect");
@@ -1114,12 +1119,14 @@ A5,180,6,7,40
     const sx=(x)=> padL+(W-padL-padR)*((x-Xmin)/((Xmax-Xmin)||1));
     const sy=(y)=> H-padB-(H-padT-padB)*((y-Ymin)/((Ymax-Ymin)||1));
 
+    // axes
     const ax=document.createElementNS("http://www.w3.org/2000/svg","line");
     ax.setAttribute("x1",padL); ax.setAttribute("x2",padL); ax.setAttribute("y1",padT); ax.setAttribute("y2",H-padB); ax.setAttribute("stroke","#374151");
     const ay=document.createElementNS("http://www.w3.org/2000/svg","line");
     ay.setAttribute("x1",padL); ay.setAttribute("x2",W-padR); ay.setAttribute("y1",H-padB); ay.setAttribute("y2",H-padB); ay.setAttribute("stroke","#374151");
     svg.appendChild(ax); svg.appendChild(ay);
 
+    // ticks
     for(let t=0;t<=5;t++){
       const vx=Xmin+(Xmax-Xmin)*t/5, vy=Ymin+(Ymax-Ymin)*t/5;
       const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
@@ -1129,6 +1136,7 @@ A5,180,6,7,40
       svg.appendChild(tx); svg.appendChild(ty);
     }
 
+    // points
     rows.forEach((r,i)=>{
       const cx=sx(xs[i]), cy=sy(ys[i]);
       const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
@@ -1139,6 +1147,7 @@ A5,180,6,7,40
       svg.appendChild(lb);
     });
 
+    // axis labels
     const lx=document.createElementNS("http://www.w3.org/2000/svg","text");
     lx.setAttribute("x",(padL+W-padR)/2); lx.setAttribute("y",H-8); lx.setAttribute("text-anchor","middle"); lx.setAttribute("font-size","12"); lx.setAttribute("fill","#f5f5f5"); lx.textContent=mx;
     const ly=document.createElementNS("http://www.w3.org/2000/svg","text");
