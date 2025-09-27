@@ -6,7 +6,6 @@ import streamlit.components.v1 as components
 
 st.set_page_config(page_title="SYAI-Rank", layout="wide")
 
-# ---------- robust image loader ----------
 APP_DIR = Path(__file__).resolve().parent
 
 def img_data_uri_try(candidates: list[str]) -> tuple[str, bool]:
@@ -28,7 +27,6 @@ CORR_URI, CORR_FOUND = img_data_uri_try(
     ["corr_matrix.png", "assets/corr_matrix.png"]
 )
 
-# ---------- background polish ----------
 st.markdown("""
 <style>
 .stApp { background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 120%) !important; }
@@ -36,7 +34,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- full single-page HTML app ----------
 html = r"""
 <!doctype html>
 <html lang="en">
@@ -49,7 +46,7 @@ html = r"""
     --bg-dark:#0b0b0f; --bg-light:#f8fafc;
     --grad-light:#ffe4e6;
     --card-dark:#0f1115cc; --card-light:#ffffffcc;
-    --text-light:#f5f5f5; --ink:#111;
+    --text-light:#f5f5f5;
     --pink:#ec4899; --pink-700:#db2777;
     --border-dark:#262b35; --border-light:#fbcfe8;
   }
@@ -84,12 +81,9 @@ html = r"""
   body.theme-light .card.dark{background:#fff;color:#111;border-color:#e5e7eb}
 
   .section-title{font-weight:700;font-size:18px;margin-bottom:12px;color:#f9a8d4}
-  .section-title.step{color:#f9a8d4 !important;}
   .label{display:block;font-size:12px;opacity:.85;margin-bottom:4px}
 
-  input[type="text"],input[type="number"],select{
-    width:100%;padding:10px 12px;border-radius:10px;border:1px solid #ddd;background:#f8fafc;color:#111
-  }
+  input[type="number"],select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #ddd;background:#f8fafc;color:#111}
   .hint{font-size:12px;opacity:.8}
 
   .table-wrap{overflow:auto;max-height:360px}
@@ -102,24 +96,9 @@ html = r"""
   .chart,.linechart{width:100%;border:1px dashed #2a2f38;border-radius:12px;padding:8px;background:transparent}
   .chart{height:360px}
   .linechart{height:300px}
+  .chart2{width:100%;height:360px;border:1px dashed #2a2f38;border-radius:12px}
 
-  /* comparison image view */
-  .cmp-row{display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:start;margin-top:16px}
-  .cmp-panel{background:var(--card-light);color:#000;border-radius:16px;padding:16px;border:1px solid var(--border-light)}
-  .cmp-panel.dark{background:var(--card-dark);color:#e5e7eb;border-color:var(--border-dark)}
-  body.theme-light .cmp-panel.dark{background:#fff;color:#111;border-color:#e5e7eb}
-  .cmp-img{width:100%;height:auto;max-height:720px;border-radius:12px;border:1px solid #2a2f38;object-fit:contain;background:#0b0b0f}
-  .cmp-placeholder{
-    width:100%;min-height:320px;display:flex;align-items:center;justify-content:center;
-    border-radius:12px;border:1px dashed #6b7280;background:rgba(255,255,255,0.1);color:#fca5a5;
-    padding:24px;text-align:center
-  }
-  .cmp-caption{font-size:13px;opacity:.8;margin-top:6px}
-
-  /* run comparison view */
-  .controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
   .grid2{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
-  .chart2{width:100%;height:360px;border:1px dashed #2a2f38;border-radius:12px;margin-top:10px}
 </style>
 </head>
 <body class="theme-dark">
@@ -129,132 +108,41 @@ html = r"""
   <div class="header">
     <div class="title">SYAI-Rank</div>
     <div class="row">
-      <a class="btn" id="downloadSample">⬇️ Sample CSV</a>
-      <button class="btn" id="loadPaperBtn">📄 Load Paper Example</button>
       <button class="toggle" id="themeToggle">🌙 Dark</button>
     </div>
   </div>
 
   <div class="tabs">
-    <button class="tab active" id="tabRank">SYAI Ranking</button>
-    <button class="tab" id="tabCompareImgs">Comparison Images</button>
-    <button class="tab" id="tabRunCompare">Run Multi-Method Comparison</button>
+    <button class="tab active" id="tabRunCompare">Run Multi-Method Comparison</button>
   </div>
 
-  <!-- ================== SYAI RANKING ================== -->
-  <div id="viewRank">
+  <div id="viewRunCompare">
     <div class="grid">
       <div>
         <div class="card dark">
-          <div class="section-title step">Step 1: Upload Decision Matrix</div>
-          <label for="csvFile" class="btn">📤 Choose CSV</label>
-          <input id="csvFile" type="file" accept=".csv" style="display:none"/>
-          <p class="hint mt2">First column is <b>Alternative</b>.</p>
-        </div>
-
-        <div id="typesCard" class="card dark" style="display:none">
-          <div class="section-title step">Step 2: Criteria Types</div>
-          <div id="typesGrid" class="row"></div>
-        </div>
-
-        <div id="weightsCard" class="card dark" style="display:none">
-          <div class="section-title step">Step 3: Weights</div>
-          <div class="row mb2" style="gap:16px">
-            <label><input type="radio" name="wmode" id="wEqual" checked> Equal (1/m)</label>
-            <label><input type="radio" name="wmode" id="wCustom"> Custom (raw; normalized on run)</label>
-          </div>
-          <div id="weightsGrid" class="row" style="display:none"></div>
-        </div>
-
-        <div id="betaCard" class="card dark" style="display:none">
-          <div class="section-title step">Step 4: β blend</div>
-          <input id="beta" type="range" min="0" max="1" step="0.01" value="0.5" class="w100"/>
-          <div class="hint mt2">β = <b id="betaVal">0.50</b></div>
-          <button class="btn mt4" id="runBtn">Run SYAI</button>
-        </div>
-      </div>
-
-      <div>
-        <div id="matrixCard" class="card" style="display:none">
-          <div class="section-title">Decision Matrix (first 10 rows)</div>
-          <div class="table-wrap"><table id="matrixTable"></table></div>
-        </div>
-
-        <div id="resultCard" class="card" style="display:none">
-          <div class="section-title">Final Ranking (SYAI)</div>
-          <div class="table-wrap"><table id="resultTable"></table></div>
-          <div class="mt6"><div class="hint mb2">Ranking — Bar</div>
-            <div class="chart"><svg id="barSVG" width="100%" height="100%"></svg></div></div>
-          <div class="mt6"><div class="hint mb2">Ranking — Line</div>
-            <div class="linechart"><svg id="lineSVG" width="100%" height="100%"></svg></div></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================== COMPARISON IMAGES ==================== -->
-  <div id="viewCompareImgs" style="display:none">
-    <div class="cmp-row">
-      <div class="cmp-panel">
-        <div class="section-title">Scatter Matrix</div>
-        <img id="bigScatter" class="cmp-img" style="display:none"/>
-        <div id="scatterMissing" class="cmp-placeholder" style="display:none">
-          <div><b>scatter_matrix.png</b> not found. Put it at <code>./scatter_matrix.png</code> or <code>./assets/scatter_matrix.png</code>.</div>
-        </div>
-        <div class="cmp-caption">Pairwise relationships of method scores.</div>
-      </div>
-      <div class="cmp-panel dark">
-        <div class="section-title">How to read</div>
-        <ul>
-          <li>Closer to a straight line ⇒ higher correlation.</li>
-          <li>Outliers reveal method disagreement.</li>
-        </ul>
-      </div>
-    </div>
-    <div class="cmp-row">
-      <div class="cmp-panel">
-        <div class="section-title">Correlation Heatmap</div>
-        <img id="bigCorr" class="cmp-img" style="display:none"/>
-        <div id="corrMissing" class="cmp-placeholder" style="display:none">
-          <div><b>corr_matrix.png</b> not found. Put it at <code>./corr_matrix.png</code> or <code>./assets/corr_matrix.png</code>.</div>
-        </div>
-        <div class="cmp-caption">Darker = stronger agreement.</div>
-      </div>
-      <div class="cmp-panel dark">
-        <div class="section-title">Tip</div>
-        <ul><li>Use with the “Run” tab to validate trends you see here.</li></ul>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================== RUN MULTI-METHOD COMPARISON ==================== -->
-  <div id="viewRunCompare" style="display:none">
-    <div class="grid">
-      <div>
-        <div class="card dark">
-          <div class="section-title step">Step A: Upload CSV</div>
+          <div class="section-title">Step A: Upload CSV</div>
           <label for="cmpCsvFile" class="btn">📤 Choose CSV</label>
           <input id="cmpCsvFile" type="file" accept=".csv" style="display:none"/>
-          <p class="hint mt2">First column is <b>Alternative</b>.</p>
-          <button class="btn mt4" id="cmpDemoBtn">📄 Load Demo CSV</button>
+          <button class="btn mt2" id="cmpDemoBtn">📄 Load Demo CSV</button>
+          <p class="hint mt2">First column is <b>Alternative</b>. Others are criteria.</p>
         </div>
 
         <div id="cmpTypesCard" class="card dark" style="display:none">
-          <div class="section-title step">Step B: Criteria Types</div>
+          <div class="section-title">Step B: Criteria Types</div>
           <div id="cmpTypesGrid" class="grid2"></div>
         </div>
 
         <div id="cmpWeightsCard" class="card dark" style="display:none">
-          <div class="section-title step">Step C: Weights</div>
+          <div class="section-title">Step C: Weights</div>
           <div class="row mb2" style="gap:16px">
             <label><input type="radio" name="cmp_wmode" id="cmp_wEqual" checked> Equal (1/m)</label>
-            <label><input type="radio" name="cmp_wmode" id="cmp_wCustom"> Custom (raw; normalized on run)</label>
+            <label><input type="radio" name="cmp_wmode" id="cmp_wCustom"> Custom (raw; normalized)</label>
           </div>
           <div id="cmpWeightsGrid" class="grid2" style="display:none"></div>
         </div>
 
         <div class="card dark">
-          <div class="section-title step">Step D: Run</div>
+          <div class="section-title">Step D: Run</div>
           <button class="btn" id="cmpRunBtn">▶️ Run Comparison</button>
         </div>
       </div>
@@ -284,7 +172,7 @@ html = r"""
             </div>
 
             <div class="mt4">
-              <div class="hint mb2">Grouped Bar — value with (rank)</div>
+              <div class="hint mb2">Grouped Bar — <b>rank only</b></div>
               <div class="chart2"><svg id="mmc_bar" width="100%" height="100%"></svg></div>
             </div>
 
@@ -292,12 +180,17 @@ html = r"""
               <div class="hint mb2">Method vs Method — Scatter with correlation</div>
               <div class="chart2"><svg id="mmc_scatter" width="100%" height="100%"></svg></div>
             </div>
+
+            <div class="mt6">
+              <div class="hint mb2">Correlation Heatmap — Pearson r and p-values</div>
+              <div class="chart2" style="height:460px"><svg id="mmc_heat" width="100%" height="100%"></svg></div>
+              <div class="hint mt2">Darker = stronger | p shown below r (two-tailed).</div>
+            </div>
           </div>
         </div>
       </div>
-    </div> <!-- /grid -->
-  </div> <!-- /viewRunCompare -->
-</div>
+    </div>
+  </div>
 
 <script>
 (function(){
@@ -315,29 +208,13 @@ html = r"""
   $("themeToggle").onclick = ()=>{ dark=!dark; applyTheme(); };
   applyTheme();
 
-  // tabs
-  function activate(tabId){
-    ["tabRank","tabCompareImgs","tabRunCompare"].forEach(id=> $(""+id).classList.remove("active"));
-    $(tabId).classList.add("active");
-    show($("viewRank"), tabId==="tabRank");
-    show($("viewCompareImgs"), tabId==="tabCompareImgs");
-    show($("viewRunCompare"), tabId==="tabRunCompare");
-  }
-  $("tabRank").onclick=()=>activate("tabRank");
-  $("tabCompareImgs").onclick=()=>activate("tabCompareImgs");
-  $("tabRunCompare").onclick=()=>activate("tabRunCompare");
-
-  // images
+  // static images (not used here but kept wired)
   const SCATTER_URI = "SCATTER_DATA_URI";
   const CORR_URI    = "CORR_DATA_URI";
   const HAS_SCATTER = "HAS_SCATTER_FLAG" === "1";
   const HAS_CORR    = "HAS_CORR_FLAG" === "1";
-  if (HAS_SCATTER) { $("bigScatter").src = SCATTER_URI; $("bigScatter").style.display = ""; }
-  else { const d=$("scatterMissing"); if(d) d.style.display=""; }
-  if (HAS_CORR) { $("bigCorr").src = CORR_URI; $("bigCorr").style.display = ""; }
-  else { const d=$("corrMissing"); if(d) d.style.display=""; }
 
-  // utils
+  // CSV helpers
   function parseCSVText(text){
     const rows = []; let i=0, cur="", inQuotes=false, row=[];
     const pushCell=()=>{ row.push(cur); cur=""; };
@@ -360,297 +237,6 @@ html = r"""
     return rows;
   }
   const toNum=(v)=>{ const x=parseFloat(String(v).replace(/,/g,"")); return isFinite(x)?x:NaN; };
-
-  // ---------- SYAI TAB ----------
-  const sampleCSV = `Alternative,Cost,Quality,Delivery Time,Temperature
-A1,200,8,4,30
-A2,250,7,5,60
-A3,300,9,6,85
-`;
-  $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(sampleCSV);
-  $("downloadSample").download = "sample.csv";
-
-  let columns=[], rows=[], crits=[], types={}, ideals={}, weights={}, beta=0.5, weightMode='equal';
-
-  $("beta").oninput = ()=>{ beta = parseFloat($("beta").value); $("betaVal").textContent = beta.toFixed(2); };
-  $("wEqual").onchange = ()=>{ weightMode='equal'; $("weightsGrid").style.display="none"; };
-  $("wCustom").onchange = ()=>{ weightMode='custom'; $("weightsGrid").style.display=""; };
-
-  $("csvFile").onchange = (e)=>{
-    const f = e.target.files[0]; if(!f) return;
-    const r = new FileReader();
-    r.onload = ()=>{ try{ initFromCSV(String(r.result)); }catch(ex){ err(ex.message||String(ex)); } };
-    r.readAsText(f);
-  };
-
-  function initFromCSV(txt){
-    const arr = parseCSVText(txt);
-    if(!arr.length) throw new Error("Empty CSV");
-    columns = arr[0].map(c => String(c ?? "").trim());
-    if (columns.includes("Alternative")){
-      const idx = columns.indexOf("Alternative");
-      if (idx !== 0){ const nm = columns.splice(idx,1)[0]; columns.unshift(nm); }
-    } else { columns[0] = "Alternative"; }
-
-    crits = columns.slice(1);
-    rows = arr.slice(1).filter(r=>r.length>=columns.length).map(r=>{
-      const obj={}; columns.forEach((c,i)=> obj[c]=r[i] ?? ""); return obj;
-    });
-
-    types  = Object.fromEntries(crits.map(c=>[c,"Benefit"]));
-    ideals = Object.fromEntries(crits.map(c=>[c,""]));
-    weights= Object.fromEntries(crits.map(c=>[c,1]));
-
-    renderMatrix(); renderTypes(); renderWeights();
-    show($("matrixCard"), true);
-    show($("typesCard"), true);
-    show($("weightsCard"), true);
-    show($("betaCard"), true);
-    show($("resultCard"), false);
-  }
-
-  $("loadPaperBtn").onclick = ()=>{
-    const csv = `Alternative,Cost,Quality,Delivery Time,Temperature
-A1,200,8,4,30
-A2,250,7,5,60
-A3,300,9,6,85
-`;
-    initFromCSV(csv);
-    types = { "Cost":"Cost", "Quality":"Benefit", "Delivery Time":"Cost", "Temperature":"Ideal (Goal)" };
-    ideals["Temperature"] = "60";
-    weightMode = 'equal';
-    $("wEqual").checked = true; $("wCustom").checked = false;
-    $("weightsGrid").style.display="none";
-    beta = 0.5; $("beta").value="0.5"; $("betaVal").textContent="0.50";
-    renderTypes(); renderWeights();
-    runSYAI();
-  };
-
-  function renderMatrix(){
-    const tb = $("matrixTable"); tb.innerHTML="";
-    const thead = document.createElement("thead"); const trh = document.createElement("tr");
-    columns.forEach(c=>{ const th=document.createElement("th"); th.textContent=c; trh.appendChild(th); });
-    thead.appendChild(trh); tb.appendChild(thead);
-    const tbody = document.createElement("tbody");
-    rows.slice(0,10).forEach(r=>{
-      const tr=document.createElement("tr");
-      columns.forEach(c=>{ const td=document.createElement("td"); td.textContent=String(r[c]??""); tr.appendChild(td); });
-      tbody.appendChild(tr);
-    });
-    tb.appendChild(tbody);
-  }
-
-  function renderTypes(){
-    const wrap=$("typesGrid"); wrap.innerHTML="";
-    crits.forEach(c=>{
-      const box=document.createElement("div"); box.style.minWidth="240px";
-      const lab=document.createElement("div"); lab.className="label"; lab.textContent=c; box.appendChild(lab);
-      const sel=document.createElement("select");
-      ["Benefit","Cost","Ideal (Goal)"].forEach(v=>{ const o=document.createElement("option"); o.textContent=v; sel.appendChild(o); });
-      sel.value = types[c]||"Benefit";
-      sel.onchange = ()=>{ types[c]=sel.value; renderTypes(); };
-      box.appendChild(sel);
-      if((types[c]||"")==="Ideal (Goal)"){
-        const inp=document.createElement("input"); inp.className="mt2"; inp.type="number"; inp.step="any"; inp.placeholder="Goal value";
-        inp.value=ideals[c]||""; inp.oninput=()=> ideals[c]=inp.value; box.appendChild(inp);
-      }else{ delete ideals[c]; }
-      wrap.appendChild(box);
-    });
-  }
-
-  function renderWeights(){
-    const wrap=$("weightsGrid"); wrap.innerHTML="";
-    crits.forEach(c=>{
-      const box=document.createElement("div"); box.style.minWidth="160px";
-      const lab=document.createElement("div"); lab.className="label"; lab.textContent=`w(${c})`; box.appendChild(lab);
-      const inp=document.createElement("input"); inp.type="number"; inp.step="0.001"; inp.min="0"; inp.value=weights[c]??0;
-      inp.oninput=()=> weights[c]=inp.value; box.appendChild(inp);
-      wrap.appendChild(box);
-    });
-  }
-
-  function normalizeColumn(vals, ctype, goal){
-    const max=Math.max(...vals), min=Math.min(...vals), R=max-min;
-    let xStar;
-    if(ctype==="Benefit") xStar=max;
-    else if(ctype==="Cost") xStar=min;
-    else { const g=parseFloat(goal); xStar=isFinite(g)?g:(vals.reduce((s,v)=>s+(isFinite(v)?v:0),0)/vals.length); }
-    if(Math.abs(R)<1e-12) return vals.map(_=>1.0);
-    return vals.map(x=> Math.max(0.01, Math.min(1, 0.01 + (1-0.01)*(1-Math.abs(x-xStar)/R))));
-  }
-
-  function computeSYAI(){
-    if(!columns.length||!rows.length){ err("No data"); return null; }
-    const X=rows.map(r=> Object.fromEntries(crits.map(c=>[c,toNum(r[c])])) );
-    const N={};
-    crits.forEach(c=>{
-      const series=X.map(row=>row[c]);
-      N[c]=normalizeColumn(series, types[c]||"Benefit", ideals[c]);
-    });
-
-    const w={};
-    if(weightMode==='equal'){ crits.forEach(c=> w[c]=1/crits.length); }
-    else {
-      let sum=0; crits.forEach(c=>{ const v=Math.max(0,parseFloat(weights[c]||0)); w[c]=isFinite(v)?v:0; sum+=w[c]; });
-      if(sum<=0) crits.forEach(c=> w[c]=1/crits.length); else crits.forEach(c=> w[c]/=sum);
-    }
-
-    const W=rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c,N[c][i]*w[c]])) );
-    const Aplus={}, Aminus={};
-    crits.forEach(c=>{
-      let mx=-Infinity, mn=Infinity;
-      W.forEach(row=>{ if(row[c]>mx) mx=row[c]; if(row[c]<mn) mn=row[c]; });
-      Aplus[c]=mx; Aminus[c]=mn;
-    });
-
-    const res=rows.map((r,i)=>{
-      let Dp=0, Dm=0;
-      crits.forEach(c=>{ Dp+=Math.abs(W[i][c]-Aplus[c]); Dm+=Math.abs(W[i][c]-Aminus[c]); });
-      const denom = beta*Dp + (1-beta)*Dm || Number.EPSILON;
-      const Close = ((1-beta)*Dm)/denom;
-      return { Alternative:String(r["Alternative"]), Dp, Dm, Close };
-    });
-    res.sort((a,b)=> b.Close-a.Close);
-    res.forEach((r,i,arr)=> r.Rank = arr.slice(0,i).filter(x=>x.Close>r.Close).length + 1);
-    return res;
-  }
-
-  $("runBtn").onclick = ()=> runSYAI();
-  function runSYAI(){
-    const result=computeSYAI(); if(!result) return;
-
-    const tb=$("resultTable"); tb.innerHTML="";
-    const thead=document.createElement("thead"); const trh=document.createElement("tr");
-    ["Alternative","D+","D-","Closeness","Rank"].forEach(h=>{ const th=document.createElement("th"); th.textContent=h; trh.appendChild(th); });
-    thead.appendChild(trh); tb.appendChild(thead);
-    const tbody=document.createElement("tbody");
-    result.forEach(r=>{
-      const tr=document.createElement("tr");
-      [r.Alternative, r.Dp.toFixed(6), r.Dm.toFixed(6), r.Close.toFixed(6), r.Rank].forEach(v=>{
-        const td=document.createElement("td"); td.textContent=String(v); tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    });
-    tb.appendChild(tbody);
-    show($("resultCard"), true);
-
-    drawBarSYAI(result.map(r=>({name:r.Alternative, value:r.Close})));
-    drawLineSYAI(result.map(r=>({rank:r.Rank, value:r.Close, name:r.Alternative})));
-  }
-
-  // charts for SYAI (kept as-is)
-  const PASTELS=["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"];
-  let barRects=[], linePoints=[];
-  function showTip(html,x,y){
-    let tt=document.getElementById("tt");
-    if(!tt){
-      tt=document.createElement("div");
-      tt.id="tt";
-      tt.style.position="fixed"; tt.style.display="none"; tt.style.padding="6px 8px";
-      tt.style.borderRadius="8px"; tt.style.background="#fff"; tt.style.color="#111";
-      tt.style.border="1px solid #e5e7eb"; tt.style.boxShadow="0 12px 24px rgba(0,0,0,.18)";
-      tt.style.fontSize="12px"; tt.style.pointerEvents="none"; tt.style.zIndex="99999";
-      document.body.appendChild(tt);
-    }
-    tt.innerHTML=html; tt.style.left=(x+12)+"px"; tt.style.top=(y+12)+"px"; tt.style.display="block";
-  }
-  function hideTip(){ const tt=document.getElementById("tt"); if(tt) tt.style.display="none"; }
-
-  function drawBarSYAI(data){
-    const svg=$("barSVG"); while(svg.firstChild) svg.removeChild(svg.firstChild);
-    barRects.length=0; hideTip();
-    const rect=svg.getBoundingClientRect();
-    const W=rect.width||800, H=rect.height||360, padL=50,padR=20,padT=18,padB=44;
-    const max=Math.max(...data.map(d=>d.value))||1;
-    const cell=(W-padL-padR)/data.length; const barW=cell*0.8;
-
-    for(let t=0;t<=5;t++){
-      const val=max*t/5, y=H-padB-(H-padT-padB)*(val/max);
-      const line=document.createElementNS("http://www.w3.org/2000/svg","line");
-      line.setAttribute("x1",padL); line.setAttribute("x2",W-padR); line.setAttribute("y1",y); line.setAttribute("y2",y);
-      line.setAttribute("stroke","#000"); line.setAttribute("stroke-dasharray","3 3"); svg.appendChild(line);
-      const tEl=document.createElementNS("http://www.w3.org/2000/svg","text");
-      tEl.setAttribute("x",padL-10); tEl.setAttribute("y",y+4); tEl.setAttribute("text-anchor","end"); tEl.setAttribute("font-size","12"); tEl.setAttribute("fill","#000");
-      tEl.textContent=val.toFixed(2); svg.appendChild(tEl);
-    }
-
-    data.forEach((d,i)=>{
-      const x=padL+i*cell+(cell-barW)/2; const h=(H-padT-padB)*(d.value/max); const y=H-padB-h;
-      const r=document.createElementNS("http://www.w3.org/2000/svg","rect");
-      r.setAttribute("x",x); r.setAttribute("y",y); r.setAttribute("width",barW); r.setAttribute("height",h); r.setAttribute("fill",PASTELS[i%PASTELS.length]); svg.appendChild(r);
-      const v=document.createElementNS("http://www.w3.org/2000/svg","text");
-      v.setAttribute("x",x+barW/2); v.setAttribute("y",Math.max(y+14,padT+12)); v.setAttribute("text-anchor","middle"); v.setAttribute("font-size","12"); v.setAttribute("fill","#000");
-      v.textContent=d.value.toFixed(3); svg.appendChild(v);
-      const lbl=document.createElementNS("http://www.w3.org/2000/svg","text");
-      lbl.setAttribute("x",x+barW/2); lbl.setAttribute("y",H-12); lbl.setAttribute("text-anchor","middle"); lbl.setAttribute("font-size","12"); lbl.setAttribute("fill","#000"); lbl.textContent=d.name; svg.appendChild(lbl);
-      barRects.push({x,y,w:barW,h,d});
-    });
-
-    const yAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
-    yAxis.setAttribute("x1",padL); yAxis.setAttribute("x2",padL); yAxis.setAttribute("y1",padT); yAxis.setAttribute("y2",H-padB); yAxis.setAttribute("stroke","#000");
-    svg.appendChild(yAxis);
-
-    svg.onmousemove=(e)=>{
-      const b=svg.getBoundingClientRect(), mx=e.clientX-b.left, my=e.clientY-b.top;
-      const hit=barRects.find(r=> mx>=r.x && mx<=r.x+r.w && my>=r.y && my<=r.y+r.h );
-      if(hit) showTip(`${hit.d.name} — <b>${hit.d.value.toFixed(6)}</b>`, e.clientX, e.clientY); else hideTip();
-    };
-    svg.onmouseleave=hideTip;
-  }
-
-  function drawLineSYAI(data){
-    const svg=$("lineSVG"); while(svg.firstChild) svg.removeChild(svg.firstChild);
-    linePoints.length=0; hideTip();
-    const rect=svg.getBoundingClientRect();
-    const W=rect.width||800, H=rect.height||300, padL=50,padR=20,padT=14,padB=30;
-    const maxY=Math.max(...data.map(d=>d.value))||1, minX=1, maxX=Math.max(...data.map(d=>d.rank))||1;
-    const sx=(r)=> padL+(W-padL-padR)*((r-minX)/(maxX-minX||1));
-    const sy=(v)=> H-padB-(H-padT-padB)*(v/maxY);
-
-    for(let t=0;t<=5;t++){
-      const val=maxY*t/5, y=H-padB-(H-padT-padB)*(val/maxY);
-      const gl=document.createElementNS("http://www.w3.org/2000/svg","line");
-      gl.setAttribute("x1",padL); gl.setAttribute("x2",W-padR); gl.setAttribute("y1",y); gl.setAttribute("y2",y);
-      gl.setAttribute("stroke","#000"); gl.setAttribute("stroke-dasharray","3 3"); svg.appendChild(gl);
-      const lbl=document.createElementNS("http://www.w3.org/2000/svg","text");
-      lbl.setAttribute("x",padL-10); lbl.setAttribute("y",y+4); lbl.setAttribute("text-anchor","end"); lbl.setAttribute("font-size","12"); lbl.setAttribute("fill","#000");
-      lbl.textContent=val.toFixed(2); svg.appendChild(lbl);
-    }
-
-    const p=document.createElementNS("http://www.w3.org/2000/svg","path");
-    let dstr="";
-    data.sort((a,b)=> a.rank-b.rank).forEach((pt,i)=>{
-      const x=sx(pt.rank), y=sy(pt.value);
-      dstr += (i===0? "M":"L") + x + " " + y + " ";
-      linePoints.push({x,y,info:pt});
-    });
-    p.setAttribute("d", dstr.trim());
-    p.setAttribute("fill","none"); p.setAttribute("stroke","#64748b"); p.setAttribute("stroke-width","2");
-    svg.appendChild(p);
-
-    linePoints.forEach(lp=>{
-      const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
-      c.setAttribute("cx",lp.x); c.setAttribute("cy",lp.y); c.setAttribute("r","4"); c.setAttribute("fill","#94a3b8");
-      svg.appendChild(c);
-      const t=document.createElementNS("http://www.w3.org/2000/svg","text");
-      t.setAttribute("x",lp.x+6); t.setAttribute("y",lp.y-6); t.setAttribute("font-size","12"); t.setAttribute("fill","#000");
-      t.textContent=lp.info.value.toFixed(3); svg.appendChild(t);
-    });
-
-    for(let r=1;r<=maxX;r++){
-      const x=sx(r);
-      const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
-      tx.setAttribute("x",x); tx.setAttribute("y",H-8); tx.setAttribute("text-anchor","middle"); tx.setAttribute("font-size","12"); tx.setAttribute("fill","#000");
-      tx.textContent=r; svg.appendChild(tx);
-    }
-    const yAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
-    yAxis.setAttribute("x1",50); yAxis.setAttribute("x2",50); yAxis.setAttribute("y1",padT); yAxis.setAttribute("y2",H-padB); yAxis.setAttribute("stroke","#000");
-    svg.appendChild(yAxis);
-  }
-
-  // ---------- MULTI-METHOD COMPARISON ----------
-  const COLORS=["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5","#ddd6fe","#fdba74"];
-  const methodsOrder=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
 
   // state
   let cmp_columns=[], cmp_rows=[], cmp_crits=[];
@@ -722,7 +308,6 @@ A3,300,9,6,85
       wrap.appendChild(box);
     });
   }
-
   $("cmp_wEqual").onchange = ()=>{ cmp_wmode='equal'; $("cmpWeightsGrid").style.display="none"; };
   $("cmp_wCustom").onchange = ()=>{ cmp_wmode='custom'; $("cmpWeightsGrid").style.display=""; };
 
@@ -732,7 +317,6 @@ A3,300,9,6,85
     r.onload = ()=> cmp_initFromCSV(String(r.result));
     r.readAsText(f);
   };
-
   const demoCSV = `Alternative,Cost,Quality,Delivery
 A1,200,8,4
 A2,250,7,5
@@ -744,18 +328,18 @@ A5,180,6,7`;
   // math helpers
   function vec(vals){ return vals.map(x=> (isFinite(x)? x : 0)); }
   function vectorNorm(vals){ const d=Math.sqrt(vals.reduce((s,v)=>s+(v*v),0))||1; return vals.map(v=>v/d); }
-  function sawNorm(vals, type="Benefit"){
-    const max=Math.max(...vals), min=Math.min(...vals), R=(max-min)||1;
-    if(type==="Cost") return vals.map(x=> (max-x)/R);
-    return vals.map(x=> (x-min)/R);
+
+  // SAW-style normalization (paper): benefit = x/max; cost = min/x; goal = distance-to-goal utility in [0,1]
+  function sawUnit(vals, type="Benefit", goal=null){
+    const max=Math.max(...vals), min=Math.min(...vals);
+    if(type==="Benefit"){ const M=max||1; return vals.map(x=> x/(M)); }
+    if(type==="Cost"){ const m=min||1; return vals.map(x=> (m)/(x||1)); }
+    // Ideal(Goal)
+    const R=(max-min)||1; const g = isFinite(parseFloat(goal))? parseFloat(goal):(min+max)/2;
+    return vals.map(x=> Math.max(0,1-Math.abs(x-g)/R));
   }
 
-  function goalUtility(vals, g){
-    const max=Math.max(...vals), min=Math.min(...vals), R=(max-min)||1;
-    const gg = isFinite(parseFloat(g)) ? parseFloat(g) : (min+max)/2;
-    return vals.map(x=> Math.max(0, 1 - Math.abs(x-gg)/R)); // [0,1], higher better
-  }
-
+  // ============ CORE COMPUTE ============
   function computeAll(){
     if(!cmp_rows.length) return null;
     const X = cmp_rows.map(r=> Object.fromEntries(cmp_crits.map(c=>[c, toNum(r[c])])) );
@@ -768,28 +352,27 @@ A5,180,6,7`;
       if(sum<=0) cmp_crits.forEach(c=> w[c]=1/cmp_crits.length); else cmp_crits.forEach(c=> w[c]/=sum);
     }
 
-    // utilities per criterion respecting type
-    const U_saw = {};
+    // SAW utilities (unitized as defined above)
+    const U = {};
     cmp_crits.forEach(c=>{
       const vals = vec(X.map(r=>r[c]));
-      if((cmp_types[c]||"Benefit")==="Ideal (Goal)") U_saw[c]=goalUtility(vals, cmp_ideals[c]);
-      else U_saw[c]=sawNorm(vals, cmp_types[c]);
+      U[c] = sawUnit(vals, cmp_types[c], cmp_ideals[c]);
     });
 
     // ---------- SAW ----------
-    const SAW = X.map((_,i)=> cmp_crits.reduce((s,c)=> s + w[c]*U_saw[c][i], 0));
+    const SAW = X.map((_,i)=> cmp_crits.reduce((s,c)=> s + w[c]*U[c][i], 0));
 
-    // ---------- WASPAS ----------
+    // ---------- WASPAS (WSM + WPM, both from SAW unitization) ----------
     const WSM = SAW.slice();
-    const WPM = X.map((_,i)=> cmp_crits.reduce((p,c)=> p * Math.pow(Math.max(U_saw[c][i],1e-12), w[c]), 1));
+    const WPM = X.map((_,i)=> cmp_crits.reduce((p,c)=> p * Math.pow(Math.max(U[c][i],1e-12), w[c]), 1));
     const WASPAS = X.map((_,i)=> 0.5*WSM[i] + 0.5*WPM[i]);
 
-    // ---------- MOORA (benefit minus cost, vector norm; goal treated as benefit utility) ----------
+    // ---------- MOORA (vector norm; benefit-cost difference; goal treated as [0,1] utility) ----------
     const N_vec = {};
     cmp_crits.forEach(c=>{
       const vals = vec(X.map(r=>r[c]));
       if((cmp_types[c]||"Benefit")==="Ideal (Goal)") {
-        N_vec[c] = goalUtility(vals, cmp_ideals[c]); // already [0,1]
+        N_vec[c] = sawUnit(vals, "Ideal (Goal)", cmp_ideals[c]); // [0,1]
       } else {
         N_vec[c] = vectorNorm(vals);
       }
@@ -800,24 +383,18 @@ A5,180,6,7`;
         if((cmp_types[c]||"Benefit")==="Cost") sumC += w[c]*N_vec[c][i];
         else sumB += w[c]*N_vec[c][i];
       });
-      return sumB - sumC; // can be negative
+      return sumB - sumC; // may be negative
     });
 
     // ---------- TOPSIS ----------
     const N_t = {};
-    cmp_crits.forEach(c=>{
-      const vals=vec(X.map(r=>r[c]));
-      N_t[c] = vectorNorm(vals);
-    });
+    cmp_crits.forEach(c=>{ N_t[c] = vectorNorm(vec(X.map(r=>r[c]))); });
     const W_t = X.map((_,i)=> Object.fromEntries(cmp_crits.map(c=>[c, N_t[c][i]*w[c]])) );
     const Aplus={}, Aminus={};
     cmp_crits.forEach(c=>{
       const arr=W_t.map(r=>r[c]);
-      if ((cmp_types[c]||"Benefit")==="Cost"){
-        Aplus[c]=Math.min(...arr); Aminus[c]=Math.max(...arr);
-      } else {
-        Aplus[c]=Math.max(...arr); Aminus[c]=Math.min(...arr);
-      }
+      if ((cmp_types[c]||"Benefit")==="Cost"){ Aplus[c]=Math.min(...arr); Aminus[c]=Math.max(...arr); }
+      else { Aplus[c]=Math.max(...arr); Aminus[c]=Math.min(...arr); }
     });
     const TOPSIS = X.map((_,i)=>{
       let dp=0, dm=0;
@@ -826,8 +403,8 @@ A5,180,6,7`;
       return dm/(dp+dm); // higher better
     });
 
-    // ---------- SYAI (beta=0.5, normalized to [0,1] via U_saw) ----------
-    const W_sy = X.map((_,i)=> Object.fromEntries(cmp_crits.map(c=>[c, U_saw[c][i]*w[c]])) );
+    // ---------- SYAI (beta=0.5 on SAW-unit space) ----------
+    const W_sy = X.map((_,i)=> Object.fromEntries(cmp_crits.map(c=>[c, U[c][i]*w[c]])) );
     const Aplus_sy={}, Aminus_sy={};
     cmp_crits.forEach(c=>{
       const arr=W_sy.map(r=>r[c]); Aplus_sy[c]=Math.max(...arr); Aminus_sy[c]=Math.min(...arr);
@@ -837,47 +414,42 @@ A5,180,6,7`;
       let Dp=0, Dm=0;
       cmp_crits.forEach(c=>{ const v=W_sy[i][c]; Dp+=Math.abs(v-Aplus_sy[c]); Dm+=Math.abs(v-Aminus_sy[c]); });
       const denom = betaSY*Dp + (1-betaSY)*Dm || Number.EPSILON;
-      return ((1-betaSY)*Dm)/denom; // higher better
+      return ((1-betaSY)*Dm)/denom;
     });
 
-    // ---------- VIKOR (show raw Q; lower is better) ----------
+    // ---------- VIKOR (raw Q, lower better) ----------
     const fStar={}, fMin={};
     cmp_crits.forEach(c=>{
       const vals=X.map(r=>r[c]);
-      if ((cmp_types[c]||"Benefit")==="Cost"){
-        fStar[c]=Math.min(...vals); fMin[c]=Math.max(...vals);
-      } else {
-        fStar[c]=Math.max(...vals); fMin[c]=Math.min(...vals);
-      }
+      if ((cmp_types[c]||"Benefit")==="Cost"){ fStar[c]=Math.min(...vals); fMin[c]=Math.max(...vals); }
+      else { fStar[c]=Math.max(...vals); fMin[c]=Math.min(...vals); }
     });
     const S = X.map(r=> cmp_crits.reduce((s,c)=> {
       const denom = Math.abs(fStar[c]-fMin[c]) || 1;
       const term = ((cmp_types[c]||"Benefit")==="Cost") ?
-        ( (r[c]-fStar[c]) / (fMin[c]-fStar[c] || 1) ) :
-        ( (fStar[c]-r[c]) / denom );
+        ((r[c]-fStar[c])/(fMin[c]-fStar[c] || 1)) :
+        ((fStar[c]-r[c])/denom);
       return s + w[c]*term;
     }, 0));
     const R = X.map(r=> Math.max(...cmp_crits.map(c=>{
       const denom = Math.abs(fStar[c]-fMin[c]) || 1;
       const term = ((cmp_types[c]||"Benefit")==="Cost") ?
-        ( (r[c]-fStar[c]) / (fMin[c]-fStar[c] || 1) ) :
-        ( (fStar[c]-r[c]) / denom );
+        ((r[c]-fStar[c])/(fMin[c]-fStar[c] || 1)) :
+        ((fStar[c]-r[c])/denom);
       return w[c]*term;
     })));
     const Smin=Math.min(...S), Smax=Math.max(...S), Rmin=Math.min(...R), Rmax=Math.max(...R);
     const v=0.5;
     const VIKOR = X.map((_,i)=> v*((S[i]-Smin)/((Smax-Smin)||1)) + (1-v)*((R[i]-Rmin)/((Rmax-Rmin)||1)) ); // lower better
 
-    // ---------- COBRA (distance diff in utility space; can be negative) ----------
+    // ---------- COBRA (distance to ideal in SAW-unit space; lower better) ----------
     const COBRA = X.map((_,i)=>{
-      let diPlus=0, diMinus=0;
+      let diPlus=0;
       cmp_crits.forEach(c=>{
-        const z=U_saw[c][i]; // [0,1]
-        diPlus  += w[c]*(1 - z)**2; // ideal at 1
-        diMinus += w[c]*(z - 0)**2; // anti-ideal at 0
+        const z=U[c][i]; // [0,1]
+        diPlus  += w[c]*(1 - z)**2; // distance to ideal (1)
       });
-      diPlus=Math.sqrt(diPlus); diMinus=Math.sqrt(diMinus);
-      return diMinus - diPlus; // higher better, possibly negative
+      return Math.sqrt(diPlus); // lower is better
     });
 
     // ranks
@@ -892,16 +464,20 @@ A5,180,6,7`;
 
     const ranks = {
       TOPSIS: ranksHigherBetter(TOPSIS),
-      VIKOR:  ranksLowerBetter(VIKOR),   // <-- lowest is best
+      VIKOR:  ranksLowerBetter(VIKOR),
       SAW:    ranksHigherBetter(SAW),
       SYAI:   ranksHigherBetter(SYAI),
-      COBRA:  ranksHigherBetter(COBRA),
+      COBRA:  ranksLowerBetter(COBRA),  // <-- as requested: less is better
       WASPAS: ranksHigherBetter(WASPAS),
       MOORA:  ranksHigherBetter(MOORA),
     };
 
     return { methods:{TOPSIS,VIKOR,SAW,SYAI,COBRA,WASPAS,MOORA}, ranks };
   }
+
+  // ---------- UI RENDER ----------
+  const COLORS=["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5","#ddd6fe","#fdba74"];
+  const methodsOrder=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
 
   function renderCmpTable(res){
     const tb=$("mmc_table"); tb.innerHTML="";
@@ -923,20 +499,24 @@ A5,180,6,7`;
     tb.appendChild(tbody);
   }
 
-  // ------- charts (BLACK AXES; bar shows ranks; scatter shows correlation) -------
+  // BAR: rank-only labels, black axes
   function drawCmpBars(res){
     const svg=$("mmc_bar"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const rect=svg.getBoundingClientRect(); const W=rect.width||900, H=rect.height||360;
     svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
     const padL=70,padR=20,padT=20,padB=60;
 
-    const data = cmp_rows.map((r,i)=> ({name:String(r["Alternative"]), vals:methodsOrder.map(m=> res.methods[m][i]), ranks:methodsOrder.map(m=> res.ranks[m][i])}));
+    const data = cmp_rows.map((r,i)=> ({
+      name:String(r["Alternative"]),
+      vals:methodsOrder.map(m=> res.methods[m][i]),
+      ranks:methodsOrder.map(m=> res.ranks[m][i])
+    }));
     const allVals = data.flatMap(d=>d.vals);
     const max=Math.max(...allVals), min=Math.min(...allVals);
     const yMin=Math.min(min,0), yMax=Math.max(max,0), range=(yMax-yMin)||1;
     const cell=(W-padL-padR)/data.length; const barW = (cell*0.8)/methodsOrder.length;
 
-    // axes + grid (black)
+    // axes
     const yAxis=document.createElementNS("http://www.w3.org/2000/svg","line");
     yAxis.setAttribute("x1",padL); yAxis.setAttribute("x2",padL); yAxis.setAttribute("y1",padT); yAxis.setAttribute("y2",H-padB); yAxis.setAttribute("stroke","#000");
     svg.appendChild(yAxis);
@@ -971,18 +551,18 @@ A5,180,6,7`;
         rect.setAttribute("fill", COLORS[k%COLORS.length]);
         svg.appendChild(rect);
 
-        // number label and (rank)
+        // label: (rank) ONLY
         const tVal=document.createElementNS("http://www.w3.org/2000/svg","text");
         tVal.setAttribute("x",x+(barW-1.5)/2); tVal.setAttribute("y", (h>=0? y : H-padB)-4);
         tVal.setAttribute("text-anchor","middle"); tVal.setAttribute("font-size","11"); tVal.setAttribute("fill","#000");
-        tVal.textContent = `${v.toFixed(3)} (${d.ranks[k]})`;
+        tVal.textContent = `(${d.ranks[k]})`;
         svg.appendChild(tVal);
       });
     });
 
     // legend
     methodsOrder.forEach((m,i)=>{
-      const y=padT+14 + i*16, x=W-padR-170;
+      const y=padT+14 + i*16, x=W-padR-140;
       const sw=document.createElementNS("http://www.w3.org/2000/svg","rect");
       sw.setAttribute("x",x); sw.setAttribute("y",y-10); sw.setAttribute("width",12); sw.setAttribute("height",12); sw.setAttribute("fill",COLORS[i%COLORS.length]);
       const tx=document.createElementNS("http://www.w3.org/2000/svg","text");
@@ -991,6 +571,123 @@ A5,180,6,7`;
     });
   }
 
+  // Pearson r & p-value helpers (t-CDF via regularized incomplete beta)
+  function betacf(a,b,x){
+    const MAXIT=200, EPS=3e-7, FPMIN=1e-30;
+    let qab=a+b, qap=a+1, qam=a-1;
+    let c=1, d=1-(qab*x/qap);
+    if (Math.abs(d)<FPMIN) d=FPMIN; d=1/d; let h=d;
+    for(let m=1, m2=2; m<=MAXIT; m++, m2+=2){
+      let aa = m*(b-m)*x/((qam+m2)*(a+m2));
+      d = 1+aa*d; if(Math.abs(d)<FPMIN) d=FPMIN; c = 1+aa/c; if(Math.abs(c)<FPMIN) c=FPMIN; d=1/d; h*=d*c;
+      aa = -(a+m)*(qab+m)*x/((a+m2)*(qap+m2));
+      d = 1+aa*d; if(Math.abs(d)<FPMIN) d=FPMIN; c = 1+aa/c; if(Math.abs(c)<FPMIN) c=FPMIN; d=1/d; let del=d*c; h*=del;
+      if(Math.abs(del-1) < EPS) break;
+    }
+    return h;
+  }
+  function betai(a,b,x){
+    if (x<=0) return 0; if (x>=1) return 1;
+    const bt = Math.exp( (a*Math.log(x)) + (b*Math.log(1-x)) - Math.logBeta(a,b) );
+    let result;
+    if (x < (a+1)/(a+b+2)) result = bt*betacf(a,b,x)/a;
+    else result = 1 - bt*betacf(b,a,1-x)/b;
+    return result;
+  }
+  Math.logGamma = function(z){ // Lanczos
+    const g=7, p=[0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+    if(z<0.5) return Math.log(Math.PI) - Math.log(Math.sin(Math.PI*z)) - Math.logGamma(1-z);
+    z-=1; let x=p[0]; for(let i=1;i<g+2;i++) x+=p[i]/(z+i);
+    const t=z+g+0.5; return 0.5*Math.log(2*Math.PI)+(z+0.5)*Math.log(t)-t+Math.log(x)-Math.log(z+1);
+  }
+  Math.logBeta = function(a,b){ return Math.logGamma(a)+Math.logGamma(b)-Math.logGamma(a+b); }
+
+  function tCDF(t, df){ // two-sided helper uses symmetry
+    const x = df/(df + t*t);
+    const a = df/2, b = 0.5;
+    const ib = betai(a,b,x); // regularized incomplete beta
+    return t>0 ? 1 - 0.5*ib : 0.5*ib;
+  }
+  function pearsonPval(r,n){
+    const df=n-2; if(df<=0) return 1;
+    const t = Math.abs(r)*Math.sqrt(df/(1-r*r+1e-12));
+    const p = 2*(1 - tCDF(t, df));
+    return Math.max(0, Math.min(1, p));
+  }
+
+  function drawHeatmap(res){
+    const svg=$("mmc_heat"); while(svg.firstChild) svg.removeChild(svg.firstChild);
+    const rect=svg.getBoundingClientRect(); const W=rect.width||900, H=rect.height||460;
+    svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+    const padL=110, padR=20, padT=40, padB=80;
+
+    const methods = methodsOrder;
+    const nA = cmp_rows.length;
+
+    // build matrix r & p
+    const mat = methods.map(m => res.methods[m]);
+    function corr(i,j){
+      const xi = mat[i], yj = mat[j];
+      const n = xi.length;
+      const mx = xi.reduce((s,v)=>s+v,0)/n, my = yj.reduce((s,v)=>s+v,0)/n;
+      let num=0, dx=0, dy=0;
+      for(let k=0;k<n;k++){ const a=xi[k]-mx, b=yj[k]-my; num+=a*b; dx+=a*a; dy+=b*b; }
+      const r = num/Math.sqrt((dx||1)*(dy||1));
+      return {r, p: pearsonPval(r, n)};
+    }
+    const RP = methods.map((_,i)=> methods.map((_,j)=> corr(i,j)));
+
+    const m = methods.length;
+    const cellW=(W-padL-padR)/m, cellH=(H-padT-padB)/m;
+
+    // color scale (dark = strong)
+    function colorFor(r){
+      const v=Math.abs(r); // 0..1
+      const x=Math.floor(255*(1-v));
+      return `rgb(${x},${x},${255})`; // dark navy for |r|~1
+    }
+
+    // grid & labels
+    for(let i=0;i<m;i++){
+      const lx=document.createElementNS("http://www.w3.org/2000/svg","text");
+      lx.setAttribute("x", padL + i*cellW + cellW/2);
+      lx.setAttribute("y", padT-10);
+      lx.setAttribute("transform", `rotate(-45 ${padL + i*cellW + cellW/2} ${padT-10})`);
+      lx.setAttribute("text-anchor","end"); lx.setAttribute("font-size","12"); lx.setAttribute("fill","#000");
+      lx.textContent=methods[i]; svg.appendChild(lx);
+
+      const ly=document.createElementNS("http://www.w3.org/2000/svg","text");
+      ly.setAttribute("x", padL-10); ly.setAttribute("y", padT + i*cellH + cellH/2 + 4);
+      ly.setAttribute("text-anchor","end"); ly.setAttribute("font-size","12"); ly.setAttribute("fill","#000");
+      ly.textContent=methods[i]; svg.appendChild(ly);
+    }
+
+    // cells
+    for(let i=0;i<m;i++){
+      for(let j=0;j<m;j++){
+        const {r,p} = RP[i][j];
+        const x=padL + j*cellW, y=padT + i*cellH;
+        const rectEl=document.createElementNS("http://www.w3.org/2000/svg","rect");
+        rectEl.setAttribute("x",x); rectEl.setAttribute("y",y); rectEl.setAttribute("width",cellW-1); rectEl.setAttribute("height",cellH-1);
+        rectEl.setAttribute("fill", colorFor(r));
+        rectEl.setAttribute("stroke","#000"); rectEl.setAttribute("stroke-width","0.3");
+        svg.appendChild(rectEl);
+
+        const t1=document.createElementNS("http://www.w3.org/2000/svg","text");
+        t1.setAttribute("x",x+cellW/2); t1.setAttribute("y",y+cellH/2-2);
+        t1.setAttribute("text-anchor","middle"); t1.setAttribute("font-size","12"); t1.setAttribute("fill","#000");
+        t1.textContent=r.toFixed(3); svg.appendChild(t1);
+
+        const t2=document.createElementNS("http://www.w3.org/2000/svg","text");
+        t2.setAttribute("x",x+cellW/2); t2.setAttribute("y",y+cellH/2+14);
+        t2.setAttribute("text-anchor","middle"); t2.setAttribute("font-size","11"); t2.setAttribute("fill","#000");
+        t2.textContent=`p=${p.toExponential(2)}`; svg.appendChild(t2);
+      }
+    }
+  }
+
+  // scatter (unchanged, axes black + r line)
+  function mean(a){ return a.reduce((s,v)=>s+v,0)/a.length; }
   function drawCmpScatter(res){
     const svg=$("mmc_scatter"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const rect=svg.getBoundingClientRect(); const W=rect.width||900, H=rect.height||360;
@@ -1004,7 +701,6 @@ A5,180,6,7`;
     const sx=(x)=> padL + (W-padL-padR)*((x - Xmin)/((Xmax-Xmin)||1));
     const sy=(y)=> H-padB - (H-padT-padB)*((y - Ymin)/((Ymax-Ymin)||1));
 
-    // axes in black
     const ax=document.createElementNS("http://www.w3.org/2000/svg","line"); ax.setAttribute("x1",padL); ax.setAttribute("x2",padL); ax.setAttribute("y1",padT); ax.setAttribute("y2",H-padB); ax.setAttribute("stroke","#000");
     const ay=document.createElementNS("http://www.w3.org/2000/svg","line"); ay.setAttribute("x1",padL); ay.setAttribute("x2",W-padR); ay.setAttribute("y1",H-padB); ay.setAttribute("y2",H-padB); ay.setAttribute("stroke","#000");
     svg.appendChild(ax); svg.appendChild(ay);
@@ -1017,7 +713,6 @@ A5,180,6,7`;
       svg.appendChild(tx); svg.appendChild(ty);
     }
 
-    // points
     cmp_rows.forEach((r,i)=>{
       const cx=sx(xs[i]), cy=sy(ys[i]);
       const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
@@ -1028,21 +723,15 @@ A5,180,6,7`;
       svg.appendChild(lb);
     });
 
-    // Pearson correlation + regression line
-    function mean(a){ return a.reduce((s,v)=>s+v,0)/a.length; }
     const mxv=mean(xs), myv=mean(ys);
-    const cov=xs.reduce((s,v,i)=> s + (v-mxv)*(ys[i]-myv), 0);
-    const sx2=xs.reduce((s,v)=> s + (v-mxv)*(v-mxv), 0);
-    const sy2=ys.reduce((s,v)=> s + (v-myv)*(v-myv), 0);
-    const r = cov / Math.sqrt((sx2||1)*(sy2||1));
-    const b = cov / (sx2||1);
+    let num=0, dx=0, dy=0;
+    for(let i=0;i<xs.length;i++){ const a=xs[i]-mxv, b=ys[i]-myv; num+=a*b; dx+=a*a; dy+=b*b; }
+    const r = num/Math.sqrt((dx||1)*(dy||1));
+    const b = num/(dx||1);
     const a = myv - b*mxv;
-
-    // regression line within bounds
-    const x1=Xmin, x2=Xmax, y1=a+b*x1, y2=a+b*x2;
     const line=document.createElementNS("http://www.w3.org/2000/svg","line");
-    line.setAttribute("x1",sx(x1)); line.setAttribute("y1",sy(y1));
-    line.setAttribute("x2",sx(x2)); line.setAttribute("y2",sy(y2));
+    line.setAttribute("x1",padL); line.setAttribute("y1",sy(a+b*Xmin));
+    line.setAttribute("x2",W-padR); line.setAttribute("y2",sy(a+b*Xmax));
     line.setAttribute("stroke","#000"); line.setAttribute("stroke-width","2"); svg.appendChild(line);
 
     const cap=document.createElementNS("http://www.w3.org/2000/svg","text");
@@ -1050,13 +739,6 @@ A5,180,6,7`;
     cap.setAttribute("text-anchor","middle"); cap.setAttribute("font-size","12"); cap.setAttribute("fill","#000");
     cap.textContent=`Pearson r = ${r.toFixed(3)}`;
     svg.appendChild(cap);
-
-    // labels
-    const lx=document.createElementNS("http://www.w3.org/2000/svg","text");
-    lx.setAttribute("x",(padL+W-padR)/2); lx.setAttribute("y",H-8); lx.setAttribute("text-anchor","middle"); lx.setAttribute("font-size","12"); lx.setAttribute("fill","#000"); lx.textContent=mx;
-    const ly=document.createElementNS("http://www.w3.org/2000/svg","text");
-    ly.setAttribute("x",18); ly.setAttribute("y",(padT+H-padB)/2); ly.setAttribute("transform","rotate(-90 18 "+((padT+H-padB)/2)+")"); ly.setAttribute("font-size","12"); ly.setAttribute("fill","#000"); ly.textContent=my;
-    svg.appendChild(lx); svg.appendChild(ly);
   }
 
   function runComparison(){
@@ -1064,6 +746,7 @@ A5,180,6,7`;
     renderCmpTable(res);
     drawCmpBars(res);
     drawCmpScatter(res);
+    drawHeatmap(res);
     show($("cmpResultCard"), true);
   }
 
@@ -1071,19 +754,16 @@ A5,180,6,7`;
   $("mmc_x").onchange = ()=> { const res=computeAll(); if(res) drawCmpScatter(res); };
   $("mmc_y").onchange = ()=> { const res=computeAll(); if(res) drawCmpScatter(res); };
 
-  // default
-  activate("tabRunCompare"); // open comparison by default for your testing
 })();
 </script>
 </body>
 </html>
 """
 
-# inject URIs
+# Inject image URIs (in case you also use the static image tab later)
 html = html.replace("SCATTER_DATA_URI", SCATTER_URI or "")
 html = html.replace("CORR_DATA_URI", CORR_URI or "")
 html = html.replace("HAS_SCATTER_FLAG", "1" if SCATTER_FOUND else "0")
 html = html.replace("HAS_CORR_FLAG", "1" if CORR_FOUND else "0")
 
-# render
-components.html(html, height=3800, scrolling=True)
+components.html(html, height=3600, scrolling=True)
