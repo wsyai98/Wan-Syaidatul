@@ -5,9 +5,10 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="SYAI-Rank", layout="wide")
+
 APP_DIR = Path(__file__).resolve().parent
 
-# (optional) embed local images if you add them later
+# ---------- embed local images if you add them later ----------
 def img_data_uri_try(candidates: list[str]) -> tuple[str, bool]:
     for name in candidates:
         p = Path(name)
@@ -27,6 +28,31 @@ CORR_URI, CORR_FOUND = img_data_uri_try(
     ["corr_matrix.png", "assets/corr_matrix.png"]
 )
 
+# ---------- try to load user's sample CSV from /mnt/data ----------
+def load_sample_csv() -> str:
+    # user-uploaded path (if available in the runtime)
+    p = Path("/mnt/data/sample (1).csv")
+    if p.exists():
+        try:
+            return p.read_text(encoding="utf-8")
+        except Exception:
+            try:
+                return p.read_text(encoding="latin-1")
+            except Exception:
+                pass
+    # fallback simple demo
+    return (
+        "Alternative,Cost,Quality,Delivery\n"
+        "A1,200,8,4\n"
+        "A2,250,7,5\n"
+        "A3,300,9,6\n"
+        "A4,220,8,4\n"
+        "A5,180,6,7\n"
+    )
+
+SAMPLE_CSV = load_sample_csv()
+
+# ---------- base page background ----------
 st.markdown("""
 <style>
   .stApp { background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 120%) !important; }
@@ -44,29 +70,50 @@ html = r"""
 <title>SYAI-Rank</title>
 <style>
   :root{
+    --bg-dark:#0b0b0f; --bg-light:#f8fafc;
+    --grad-light:#ffe4e6;
+    --card-dark:#0f1115cc; --card-light:#ffffffcc;
+    --text-light:#f5f5f5;
     --pink:#ec4899; --pink-700:#db2777;
-    --card:#ffffff; --border:#e5e7eb;
+    --border-dark:#262b35; --border-light:#fbcfe8;
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
   body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial}
 
+  body.theme-dark{
+    color:var(--text-light);
+    background:linear-gradient(180deg,#0b0b0f 0%,#0b0b0f 35%,var(--grad-light) 120%);
+  }
+  body.theme-light{
+    color:#111;
+    background:linear-gradient(180deg,#f8fafc 0%,#f8fafc 40%,var(--grad-light) 120%);
+  }
+
   .container{max-width:1200px;margin:24px auto;padding:0 16px}
   .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-  .title{font-weight:800;font-size:28px;color:#111}
-  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .title{font-weight:800;font-size:28px;color:#fce7f3}
+  body.theme-light .title{color:#000}
 
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid var(--pink-700);background:var(--pink);color:#fff;cursor:pointer}
   .btn:hover{filter:brightness(0.96)}
+  .toggle{padding:8px 12px;border-radius:12px;border:1px solid #333;background:#111;color:#eee;cursor:pointer}
+  body.theme-light .toggle{background:#fff;color:#111;border-color:#cbd5e1}
+
   .tabs{display:flex;gap:8px;margin:12px 0;position:relative;z-index:10}
-  .tab{padding:10px 14px;border-radius:12px;border:1px solid #333;background:#e5e7eb;color:#111;cursor:pointer}
+  .tab{padding:10px 14px;border-radius:12px;border:1px solid #333;background:#202329;color:#ddd;cursor:pointer}
   .tab.active{background:var(--pink);border-color:var(--pink-700);color:#fff}
+  body.theme-light .tab{background:#e5e7eb;color:#111;border-color:#cbd5e1}
 
   .grid{display:grid;gap:16px;grid-template-columns:1fr}
   @media (min-width:1024px){.grid{grid-template-columns:1fr 2fr}}
 
-  .card{background:var(--card);color:#111;border-radius:16px;padding:18px;border:1px solid var(--border)}
-  .section-title{font-weight:700;font-size:18px;margin-bottom:12px;color:#db2777}
+  .card{background:var(--card-light);color:#000;border-radius:16px;padding:18px;border:1px solid var(--border-light);backdrop-filter:blur(6px)}
+  .card.dark{background:var(--card-dark);color:#e5e7eb;border-color:var(--border-dark)}
+  body.theme-light .card.dark{background:#fff;color:#111;border-color:#e5e7eb}
+
+  .section-title{font-weight:700;font-size:18px;margin-bottom:12px;color:#f9a8d4}
   .label{display:block;font-size:12px;opacity:.85;margin-bottom:4px}
   input[type="number"],select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #ddd;background:#f8fafc;color:#111}
   .hint{font-size:12px;opacity:.8}
@@ -75,22 +122,24 @@ html = r"""
   table{width:100%;border-collapse:collapse;font-size:14px;color:#111}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e5e7eb}
 
-  .chart2{width:100%;height:360px;border:1px dashed #9ca3af;border-radius:12px;background:#f9fafb}
-  .chartTall{width:100%;height:480px;border:1px dashed #9ca3af;border-radius:12px;background:#f9fafb}
+  .chart2{width:100%;height:360px;border:1px dashed #9ca3af;border-radius:12px;background:transparent}
+  .chartTall{width:100%;height:480px;border:1px dashed #9ca3af;border-radius:12px;background:transparent}
 
   .grid2{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
 
   /* Tooltip */
-  #tt{position:fixed;display:none;pointer-events:none;background:#111;color:#fff;
-      padding:6px 8px;border-radius:8px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.25);z-index:9999}
+  #tt{position:fixed;display:none;pointer-events:none;background:#fff;color:#111;
+      padding:6px 8px;border-radius:8px;font-size:12px;box-shadow:0 12px 24px rgba(0,0,0,.18);border:1px solid #e5e7eb;z-index:9999}
 </style>
 </head>
-<body>
+<body class="theme-dark">
 <div class="container">
   <div class="header">
     <div class="title">SYAI-Rank</div>
     <div class="row">
       <a class="btn" id="downloadSample">⬇️ Sample CSV</a>
+      <button class="btn" id="demoBoth">📄 Load Sample (Both Tabs)</button>
+      <button class="toggle" id="themeToggle">🌙 Dark</button>
     </div>
   </div>
 
@@ -103,20 +152,19 @@ html = r"""
   <div id="viewSYAI">
     <div class="grid">
       <div>
-        <div class="card">
+        <div class="card dark">
           <div class="section-title">Step 1: Upload CSV</div>
           <label for="csv1" class="btn">📤 Choose CSV</label>
           <input id="csv1" type="file" accept=".csv" style="display:none"/>
-          <button type="button" class="btn" id="demo1">📄 Load Demo CSV</button>
           <p class="hint mt2">First column is <b>Alternative</b>. Others are criteria.</p>
         </div>
 
-        <div id="t1" class="card" style="display:none">
+        <div id="t1" class="card dark" style="display:none">
           <div class="section-title">Step 2: Criteria Types</div>
           <div id="types1" class="grid2"></div>
         </div>
 
-        <div id="w1" class="card" style="display:none">
+        <div id="w1" class="card dark" style="display:none">
           <div class="section-title">Step 3: Weights</div>
           <div class="row mb2" style="gap:16px">
             <label><input type="radio" name="wmode1" id="w1eq" checked> Equal (1/m)</label>
@@ -125,7 +173,7 @@ html = r"""
           <div id="wg1" class="grid2" style="display:none"></div>
         </div>
 
-        <div id="b1" class="card" style="display:none">
+        <div id="b1" class="card dark" style="display:none">
           <div class="section-title">Step 4: β (blend of D⁺ and D⁻)</div>
           <input id="beta1" type="range" min="0" max="1" step="0.01" value="0.5" style="width:100%"/>
           <div class="hint mt2">β = <b id="beta1v">0.50</b></div>
@@ -158,20 +206,19 @@ html = r"""
   <div id="viewCompare" style="display:none">
     <div class="grid">
       <div>
-        <div class="card">
+        <div class="card dark">
           <div class="section-title">Step A: Upload CSV</div>
           <label for="csv2" class="btn">📤 Choose CSV</label>
           <input id="csv2" type="file" accept=".csv" style="display:none"/>
-          <button type="button" class="btn" id="demo2">📄 Load Demo CSV</button>
           <p class="hint mt2">First column is <b>Alternative</b>.</p>
         </div>
 
-        <div id="t2" class="card" style="display:none">
+        <div id="t2" class="card dark" style="display:none">
           <div class="section-title">Step B: Criteria Types</div>
           <div id="types2" class="grid2"></div>
         </div>
 
-        <div id="w2" class="card" style="display:none">
+        <div id="w2" class="card dark" style="display:none">
           <div class="section-title">Step C: Weights</div>
           <div class="row mb2" style="gap:16px">
             <label><input type="radio" name="wmode2" id="w2eq" checked> Equal (1/m)</label>
@@ -180,7 +227,7 @@ html = r"""
           <div id="wg2" class="grid2" style="display:none"></div>
         </div>
 
-        <div class="card">
+        <div class="card dark">
           <div class="section-title">Step D: Run</div>
           <button type="button" class="btn" id="runCmp">▶️ Run Comparison</button>
         </div>
@@ -202,7 +249,7 @@ html = r"""
           </div>
 
           <div class="mt6">
-            <div class="hint">Scatter (axes black, Pearson line)</div>
+            <div class="hint">Scatter (pastel color per alternative, Pearson line)</div>
             <div class="row" style="gap:12px;align-items:center">
               <div class="hint">X:</div>
               <select id="mmc_x"><option>SYAI</option><option>TOPSIS</option><option>VIKOR</option><option>SAW</option><option>COBRA</option><option>WASPAS</option><option>MOORA</option></select>
@@ -229,32 +276,23 @@ html = r"""
 (function(){
   const $  = (id)=> document.getElementById(id);
   const show = (el,on=true)=> el.style.display = on ? "" : "none";
-  const PASTELS = ["#cdeafe","#d5e8d4","#ffe6cc","#fbd5e7","#e3f2fd","#e8eaf6","#dcedc8","#ffecb3"]; // soft bar colors
+  const PASTELS = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"];
 
-  const sampleCSV = `Alternative,Cost,Quality,Delivery
-A1,200,8,4
-A2,250,7,5
-A3,300,9,6
-A4,220,8,4
-A5,180,6,7
-`;
-
-  // sample link
-  $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(sampleCSV);
-  $("downloadSample").download = "sample.csv";
-
-  // tab switching
-  function activateSYAI(e){ if(e){e.preventDefault(); e.stopPropagation();}
-    $("tabSYAI").classList.add("active"); $("tabCompare").classList.remove("active");
-    show($("viewSYAI"), true); show($("viewCompare"), false);
+  // theme toggle
+  let dark=true;
+  function applyTheme(){
+    document.body.classList.toggle('theme-dark', dark);
+    document.body.classList.toggle('theme-light', !dark);
+    $("themeToggle").textContent = dark ? "🌙 Dark" : "☀️ Light";
   }
-  function activateCompare(e){ if(e){e.preventDefault(); e.stopPropagation();}
-    $("tabCompare").classList.add("active"); $("tabSYAI").classList.remove("active");
-    show($("viewSYAI"), false); show($("viewCompare"), true);
-  }
-  $("tabSYAI").addEventListener("click", activateSYAI);
-  $("tabCompare").addEventListener("click", activateCompare);
-  activateSYAI();
+  $("themeToggle").onclick = ()=>{ dark=!dark; applyTheme(); };
+  applyTheme();
+
+  // Images injected by Python (keep for future use)
+  const SCATTER_URI = "SCATTER_DATA_URI";
+  const CORR_URI    = "CORR_DATA_URI";
+  const HAS_SCATTER = "HAS_SCATTER_FLAG" === "1";
+  const HAS_CORR    = "HAS_CORR_FLAG" === "1";
 
   // CSV helpers
   function parseCSVText(text){
@@ -279,9 +317,28 @@ A5,180,6,7
     return rows;
   }
   const toNum=(v)=>{ const x=parseFloat(String(v).replace(/,/g,"")); return isFinite(x)?x:NaN; };
-  function vectorNorm(vals){ const d=Math.sqrt(vals.reduce((s,v)=>s+(v*v),0))||1; return vals.map(v=>v/d); }
+  const vectorNorm=(vals)=>{ const d=Math.sqrt(vals.reduce((s,v)=>s+(v*v),0))||1; return vals.map(v=>v/d); };
 
-  // SAW utilities
+  // preloaded sample (injected by Python, tries /mnt/data/sample (1).csv)
+  const sampleCSV = `__INJECT_SAMPLE_CSV__`;
+  $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(sampleCSV);
+  $("downloadSample").download = "sample.csv";
+  $("demoBoth").onclick = ()=>{ initSYAI(sampleCSV); initCmp(sampleCSV); };
+
+  // tab switching
+  function activateSYAI(e){ if(e){e.preventDefault(); e.stopPropagation();}
+    $("tabSYAI").classList.add("active"); $("tabCompare").classList.remove("active");
+    show($("viewSYAI"), true); show($("viewCompare"), false);
+  }
+  function activateCompare(e){ if(e){e.preventDefault(); e.stopPropagation();}
+    $("tabCompare").classList.add("active"); $("tabSYAI").classList.remove("active");
+    show($("viewSYAI"), false); show($("viewCompare"), true);
+  }
+  $("tabSYAI").addEventListener("click", activateSYAI);
+  $("tabCompare").addEventListener("click", activateCompare);
+  activateSYAI();
+
+  // SAW utilities (unchanged for other methods)
   function sawUnit(vals, type="Benefit", goal=null){
     const max=Math.max(...vals), min=Math.min(...vals);
     if(type==="Benefit"){
@@ -302,7 +359,6 @@ A5,180,6,7
   $("w1eq").onchange = ()=>{ wmode1='equal'; $("wg1").style.display="none"; };
   $("w1c").onchange  = ()=>{ wmode1='custom'; $("wg1").style.display=""; };
 
-  $("demo1").onclick = ()=> initSYAI(sampleCSV);
   $("csv1").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>initSYAI(String(r.result)); r.readAsText(f); };
 
   function initSYAI(txt){
@@ -325,7 +381,8 @@ A5,180,6,7
 
   $("runSYAI").onclick = ()=>{
     if(!r1.length) return;
-    const res = computeSYAI(r1, crit1, type1, ideal1, w1, wmode1, beta1)
+    // ---- SYAI EXACT CALC (copied from your correct routine) ----
+    const res = computeSYAI_exact(r1, crit1, type1, ideal1, w1, wmode1, beta1)
                  .map(o=> ({Alternative:o.alt, Dp:o.Dp, Dm:o.Dm, Close:o.Close}));
     res.sort((a,b)=> b.Close-a.Close);
     res.forEach((r,i)=> r.Rank = i+1);
@@ -350,9 +407,7 @@ A5,180,6,7
   $("w2eq").onchange = ()=>{ wmode2='equal'; $("wg2").style.display="none"; };
   $("w2c").onchange  = ()=>{ wmode2='custom'; $("wg2").style.display=""; };
 
-  $("demo2").onclick = ()=> initCmp(sampleCSV);
   $("csv2").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>initCmp(String(r.result)); r.readAsText(f); };
-  $("runCmp").onclick = ()=> runComparison();
 
   function initCmp(txt){
     const arr=parseCSVText(txt); if(!arr.length) return;
@@ -372,14 +427,13 @@ A5,180,6,7
     show($("m2"),true); show($("t2"),true); show($("w2"),true); show($("rcmp"),false);
   }
 
-  // ------- shared renderers -------
+  // shared renderers
   function renderMatrix(tid, cols, rows){
     const tb=$(tid); tb.innerHTML="";
     const thead=document.createElement("thead"); const trh=document.createElement("tr");
     cols.forEach(c=>{ const th=document.createElement("th"); th.textContent=c; trh.appendChild(th); });
     thead.appendChild(trh); tb.appendChild(thead);
     const tbody=document.createElement("tbody");
-    // show ALL rows (no 10-row limit)
     rows.forEach(r=>{
       const tr=document.createElement("tr");
       cols.forEach(c=>{ const td=document.createElement("td"); td.textContent=String(r[c]??""); tr.appendChild(td); });
@@ -415,7 +469,7 @@ A5,180,6,7
     });
   }
 
-  // ================= CORE COMPUTE (shared) =================
+  // ================= CORE COMPUTE =================
   function computeWeights(crits, weights, mode){
     const w={};
     if(mode==='equal'){ crits.forEach(c=> w[c]=1/crits.length); }
@@ -435,35 +489,56 @@ A5,180,6,7
     return U;
   }
 
-  // --------- SYAI core (FIXED: ideals from U; weights applied inside distance) ----------
-  function computeSYAI(rows, crits, types, ideals, weights, wmode, beta){
-    const U = computeU(rows, crits, types, ideals);
+  // --------- SYAI (EXACT from your correct file) ----------
+  // normalization exactly like your working routine (clamped soft mapping to [0.01, 1])
+  function normalizeColumn_SYAI(vals, ctype, goal){
+    const max=Math.max(...vals), min=Math.min(...vals), R=max-min;
+    let xStar;
+    if(ctype==="Benefit") xStar=max;
+    else if(ctype==="Cost") xStar=min;
+    else {
+      const g=parseFloat(goal);
+      xStar = isFinite(g) ? g : (vals.reduce((s,v)=>s+(isFinite(v)?v:0),0)/vals.length);
+    }
+    if(Math.abs(R)<1e-12) return vals.map(_=>1.0);
+    return vals.map(x=> Math.max(0.01, Math.min(1, 0.01 + (1-0.01)*(1-Math.abs(x-xStar)/R))));
+  }
+
+  function computeSYAI_exact(rows, crits, types, ideals, weights, wmode, beta){
+    // N same as your SYAI routine
+    const N={};
+    crits.forEach(c=>{
+      const series = rows.map(r=> toNum(r[c]));
+      N[c] = normalizeColumn_SYAI(series, types[c]||"Benefit", ideals[c]);
+    });
+    // weights
     const w = computeWeights(crits, weights, wmode);
 
-    // ideals computed in normalized U-space
+    // weighted normalized
+    const W = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c,N[c][i]*w[c]])) );
+
+    // ideals in W-space
     const Aplus={}, Aminus={};
     crits.forEach(c=>{
-      const arr = U[c];
-      Aplus[c]  = Math.max(...arr);
-      Aminus[c] = Math.min(...arr);
+      let mx=-Infinity, mn=Infinity;
+      W.forEach(row=>{ if(row[c]>mx) mx=row[c]; if(row[c]<mn) mn=row[c]; });
+      Aplus[c]=mx; Aminus[c]=mn;
     });
 
+    // distances (L1) + closeness per your beta-blend
     return rows.map((r,i)=>{
       let Dp=0, Dm=0;
-      crits.forEach(c=>{
-        Dp += w[c]*Math.abs(U[c][i] - Aplus[c]);
-        Dm += w[c]*Math.abs(U[c][i] - Aminus[c]);
-      });
+      crits.forEach(c=>{ Dp+=Math.abs(W[i][c]-Aplus[c]); Dm+=Math.abs(W[i][c]-Aminus[c]); });
       const denom = beta*Dp + (1-beta)*Dm || Number.EPSILON;
       const Close = ((1-beta)*Dm)/denom;
-      return { alt:String(r["Alternative"]), Dp, Dm, Close, Urow:Object.fromEntries(crits.map(c=>[c,U[c][i]])), w };
+      return { alt:String(r["Alternative"]), Dp, Dm, Close };
     });
   }
 
   function runComparison(){
     if(!r2.length) return;
 
-    // SAW-space U and weights (one source of truth)
+    // SAW-space U and weights (one source of truth for the other methods)
     const U = computeU(r2, crit2, type2, ideal2);
     const w = computeWeights(crit2, w2, wmode2);
 
@@ -524,11 +599,11 @@ A5,180,6,7
     const Smin=Math.min(...S), Smax=Math.max(...S), Rmin=Math.min(...R), Rmax=Math.max(...R);
     const VIKOR = S.map((_,i)=> 0.5*((S[i]-Smin)/((Smax-Smin)||1)) + 0.5*((R[i]-Rmin)/((Rmax-Rmin)||1)));
 
-    // ---------- SYAI (fixed) ----------
-    const sy = computeSYAI(r2, crit2, type2, ideal2, w2, wmode2, 0.5);
+    // ---------- SYAI (exact) ----------
+    const sy = computeSYAI_exact(r2, crit2, type2, ideal2, w2, wmode2, 0.5);
     const SYAI = sy.map(o=> o.Close);
 
-    // ---------- COBRA (FIXED: mean-centered SAW utilities; lower = better; can be negative) ----------
+    // ---------- COBRA (fixed; mean-centered SAW utilities; lower = better) ----------
     const mu = Object.fromEntries(crit2.map(c=>{
       const avg = (U[c].reduce((s,v)=>s+v,0)/U[c].length);
       return [c, avg];
@@ -568,13 +643,10 @@ A5,180,6,7
     drawHeatSpearman({methods});  // soft palette + legend + hover
   }
 
-  // ======== Tooltip helpers ========
+  // ======== Tooltip ========
   const TT = $("tt");
   function showTT(x,y,html){
-    TT.style.display="block";
-    TT.style.left = (x+12)+"px";
-    TT.style.top  = (y+12)+"px";
-    TT.innerHTML = html;
+    TT.style.display="block"; TT.style.left=(x+12)+"px"; TT.style.top=(y+12)+"px"; TT.innerHTML=html;
   }
   function hideTT(){ TT.style.display="none"; }
 
@@ -695,7 +767,7 @@ A5,180,6,7
     });
   }
 
-  // Scatter (Pearson)
+  // Scatter (Pearson) — pastel per alternative
   function drawCmpScatter(res, mx, my){
     const svg=$("mmc_sc"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const W=(svg.getBoundingClientRect().width||900), H=(svg.getBoundingClientRect().height||360);
@@ -713,7 +785,8 @@ A5,180,6,7
 
     res.names.forEach((nm,i)=>{
       const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
-      c.setAttribute("cx",sx(xs[i])); c.setAttribute("cy",sy(ys[i])); c.setAttribute("r","5"); c.setAttribute("fill","#6b7280");
+      c.setAttribute("cx",sx(xs[i])); c.setAttribute("cy",sy(ys[i])); c.setAttribute("r","5"); 
+      c.setAttribute("fill", PASTELS[i%PASTELS.length]);  // pastel different for each alternative
       c.addEventListener("mousemove",(ev)=> showTT(ev.clientX, ev.clientY, `<b>${nm}</b><br/>${mx}: ${xs[i].toFixed(6)}<br/>${my}: ${ys[i].toFixed(6)}`));
       c.addEventListener("mouseleave", hideTT);
       svg.appendChild(c);
@@ -743,7 +816,6 @@ A5,180,6,7
     const padL=120, padR=60, padT=60, padB=80;
     const n=methods.length;
 
-    // rank arrays
     function rankArray(a){
       const idx=a.map((v,i)=>({v,i})).sort((x,y)=> x.v-y.v);
       const r=new Array(a.length); let i=0;
@@ -763,7 +835,7 @@ A5,180,6,7
     const ranks = data.map(arr=> rankArray(arr));
     const R = methods.map((_,i)=> methods.map((_,j)=> pearson(ranks[i], ranks[j])));
 
-    // soft readable palette (white -> light blue -> deep blue)
+    // soft blue palette (white -> light blue -> deep blue)
     function colorFor(v){ // v in [-1,1]
       const t = (v+1)/2; // 0..1
       const r = Math.round(255*(1 - 0.4*t));
@@ -785,7 +857,7 @@ A5,180,6,7
       ty.setAttribute("text-anchor","end"); ty.setAttribute("font-size","12"); ty.setAttribute("fill","#000"); ty.textContent=methods[i]; svg.appendChild(ty);
     }
 
-    // cells (no static numbers; show value on hover)
+    // cells with hover values
     for(let i=0;i<n;i++){
       for(let j=0;j<n;j++){
         const val = R[i][j];
@@ -799,7 +871,7 @@ A5,180,6,7
       }
     }
 
-    // ---- legend (color scale -1..1) on right ----
+    // legend on right
     const Lx = padL + (cellW*n) + 20, Ly = padT, Lw = 16, Lh = cellH*n;
     const steps = 60;
     for(let s=0;s<steps;s++){
@@ -813,7 +885,6 @@ A5,180,6,7
     const frame=document.createElementNS("http://www.w3.org/2000/svg","rect");
     frame.setAttribute("x",Lx); frame.setAttribute("y",Ly); frame.setAttribute("width",Lw); frame.setAttribute("height",Lh);
     frame.setAttribute("fill","none"); frame.setAttribute("stroke","#000"); frame.setAttribute("stroke-width","0.8"); svg.appendChild(frame);
-    // ticks
     [-1,-0.5,0,0.5,1].forEach(v=>{
       const y = Ly + (1-(v+1)/2)*Lh;
       const t=document.createElementNS("http://www.w3.org/2000/svg","text");
@@ -826,8 +897,15 @@ A5,180,6,7
   }
 
   // events
+  $("runCmp").onclick = ()=> runComparison();
   $("mmc_x").onchange = ()=> runComparison();
   $("mmc_y").onchange = ()=> runComparison();
+
+  // init: preload sample on both tabs
+  initSYAI(sampleCSV);
+
+  // helpers exposed within closure
+  function renderTypes(containerId, crits, types, ideals){ /* already defined above — noop for linter */ }
 
 })();
 </script>
@@ -835,10 +913,14 @@ A5,180,6,7
 </html>
 """
 
-# inject placeholders (kept for future static images)
+# inject image URIs
 html = html.replace("SCATTER_DATA_URI", SCATTER_URI or "")
 html = html.replace("CORR_DATA_URI", CORR_URI or "")
 html = html.replace("HAS_SCATTER_FLAG", "1" if SCATTER_FOUND else "0")
 html = html.replace("HAS_CORR_FLAG", "1" if CORR_FOUND else "0")
 
-components.html(html, height=4000, scrolling=True)
+# inject sample CSV into JS safely (escape backticks)
+sample_js = SAMPLE_CSV.replace("`", "\\`")
+html = html.replace("__INJECT_SAMPLE_CSV__", sample_js)
+
+components.html(html, height=4200, scrolling=True)
