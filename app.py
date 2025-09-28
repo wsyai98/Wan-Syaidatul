@@ -246,7 +246,7 @@ html = r"""
           </div>
 
           <div class="mt6">
-            <div class="hint">Scatter (pastel color per alternative, Pearson line)</div>
+            <div class="hint">Scatter (striking color per alternative, Pearson line)</div>
             <div class="row" style="gap:12px;align-items:center">
               <div class="hint">X:</div>
               <select id="mmc_x"><option>SYAI</option><option>TOPSIS</option><option>VIKOR</option><option>SAW</option><option>COBRA</option><option>WASPAS</option><option>MOORA</option></select>
@@ -257,7 +257,7 @@ html = r"""
           </div>
 
           <div class="mt6">
-            <div class="hint mb2">Correlation Heatmap — <b>Spearman</b> (soft blue palette with legend on right; value on hover)</div>
+            <div class="hint mb2">Correlation Heatmap — <b>Spearman</b> (hot pink palette; legend on right; value on hover)</div>
             <div class="chartTall"><svg id="mmc_heat" width="100%" height="100%"></svg></div>
           </div>
         </div>
@@ -273,7 +273,8 @@ html = r"""
 (function(){
   const $  = (id)=> document.getElementById(id);
   const show = (el,on=true)=> el.style.display = on ? "" : "none";
-  const PASTELS = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"]; // bars & dots
+  const PASTELS  = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"]; // bars & dots
+  const STRIKING = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"]; // scatter only
 
   // ---------- theme ----------
   let dark=true;
@@ -421,7 +422,7 @@ html = r"""
     show($("m2"),true); show($("t2"),true); show($("w2"),true); show($("rcmp"),false);
   }
 
-  // ---------- renderers (NOTE: do NOT override later!) ----------
+  // ---------- renderers ----------
   function renderMatrix(tid, cols, rows){
     const tb=$(tid); tb.innerHTML="";
     const thead=document.createElement("thead"); const trh=document.createElement("tr");
@@ -448,7 +449,6 @@ html = r"""
       sel.value = types[c]||"Benefit";
       sel.onchange = ()=>{
         types[c]=sel.value;
-        // re-render to show/hide goal input while preserving current values
         renderTypes(id,crits,types,ideals);
       };
       box.appendChild(sel);
@@ -506,7 +506,6 @@ html = r"""
       xStar = isFinite(g) ? g : (vals.reduce((s,v)=>s+(isFinite(v)?v:0),0)/vals.length);
     }
     if(Math.abs(R)<1e-12) return vals.map(_=>1.0);
-    // clamp to [0.01, 1] exactly as your code logic described
     return vals.map(x=> Math.max(0.01, Math.min(1, 0.01 + (1-0.01)*(1-Math.abs(x-xStar)/R))));
   }
 
@@ -602,12 +601,18 @@ html = r"""
     const sy = computeSYAI_exact(r2, crit2, type2, ideal2, w2, wmode2, 0.5);
     const SYAI = sy.map(o=> o.Close);
 
-    // ---------- COBRA (mean-centered SAW utilities; lower = better) ----------
-    const mu = Object.fromEntries(crit2.map(c=>{
-      const avg = (U[c].reduce((s,v)=>s+v,0)/U[c].length);
-      return [c, avg];
-    }));
-    const COBRA = r2.map((_,i)=> crit2.reduce((s,c)=> s + w[c]*(mu[c] - U[c][i]), 0));
+    // ---------- COBRA (utility-space comprehensive distance; higher is better) ----------
+    // Build distances to PIS=1 and NIS=0 on SAW utilities U[c] with weights w[c]
+    const COBRA = r2.map((_, i) => {
+      let Dp = 0, Dm = 0;
+      crit2.forEach(c => {
+        const u = Math.max(0, Math.min(1, U[c][i]));
+        const wc = w[c];
+        Dp += wc * Math.abs(u - 1.0); // to PIS
+        Dm += wc * Math.abs(u - 0.0); // to NIS
+      });
+      return Dm / ((Dp + Dm) || 1e-12); // closeness (higher = better)
+    });
 
     // ranks
     function ranksHigher(a){ const idx=a.map((v,i)=>({v,i})).sort((x,y)=> y.v-x.v); const rk=new Array(a.length); idx.forEach((o,k)=> rk[o.i]=k+1); return rk; }
@@ -615,7 +620,7 @@ html = r"""
 
     const methods={TOPSIS, VIKOR, SAW, SYAI, COBRA, WASPAS, MOORA};
     const ranks={ TOPSIS:ranksHigher(TOPSIS), VIKOR:ranksLower(VIKOR), SAW:ranksHigher(SAW),
-                  SYAI:ranksHigher(SYAI), COBRA:ranksLower(COBRA), WASPAS:ranksHigher(WASPAS), MOORA:ranksHigher(MOORA) };
+                  SYAI:ranksHigher(SYAI), COBRA:ranksHigher(COBRA), WASPAS:ranksHigher(WASPAS), MOORA:ranksHigher(MOORA) };
 
     const order=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
 
@@ -764,7 +769,7 @@ html = r"""
     });
   }
 
-  // Scatter (pastel per alternative)
+  // Scatter (STRIKING per alternative)
   function drawCmpScatter(res, mx, my){
     const svg=$("mmc_sc"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const W=(svg.getBoundingClientRect().width||900), H=(svg.getBoundingClientRect().height||360);
@@ -782,8 +787,8 @@ html = r"""
 
     res.names.forEach((nm,i)=>{
       const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
-      c.setAttribute("cx",sx(xs[i])); c.setAttribute("cy",sy(ys[i])); c.setAttribute("r","5"); 
-      c.setAttribute("fill", PASTELS[i%PASTELS.length]);
+      c.setAttribute("cx",sx(xs[i])); c.setAttribute("cy",sy(ys[i])); c.setAttribute("r","5");
+      c.setAttribute("fill", STRIKING[i % STRIKING.length]);
       c.addEventListener("mousemove",(ev)=> showTT(ev.clientX, ev.clientY, `<b>${nm}</b><br/>${mx}: ${xs[i].toFixed(6)}<br/>${my}: ${ys[i].toFixed(6)}`));
       c.addEventListener("mouseleave", hideTT);
       svg.appendChild(c);
@@ -804,7 +809,7 @@ html = r"""
     cap.setAttribute("font-size","12"); cap.setAttribute("fill","#000"); cap.textContent="Pearson r = "+r.toFixed(3); svg.appendChild(cap);
   }
 
-  // Spearman heatmap — STRICT BLUE palette + legend + hover
+  // Spearman heatmap — HOT PINK palette + legend + hover
   function drawHeatSpearman(res){
     const methods=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
     const svg=$("mmc_heat"); while(svg.firstChild) svg.removeChild(svg.firstChild);
@@ -832,12 +837,11 @@ html = r"""
     const ranks = data.map(arr=> rankArray(arr));
     const R = methods.map((_,i)=> methods.map((_,j)=> pearson(ranks[i], ranks[j])));
 
-    // Strict blue palette (no purple): very light (#e6f2ff) to deep blue (#0a58ca)
+    // Hot pink palette from very light to hot pink
     function colorFor(v){ // v in [-1,1]
       const t = (v+1)/2; // 0..1
-      // interpolate between light and deep blue; tweak for readability
-      const c0 = {r:230,g:242,b:255};  // #e6f2ff
-      const c1 = {r:10,g:88,b:202};    // #0a58ca
+      const c0 = {r:255,g:233,b:242}; // #ffe9f2 very light pink
+      const c1 = {r:236,g: 72,b:153}; // #ec4899 hot pink
       const r = Math.round(c0.r + (c1.r-c0.r)*t);
       const g = Math.round(c0.g + (c1.g-c0.g)*t);
       const b = Math.round(c0.b + (c1.b-c0.b)*t);
@@ -893,7 +897,7 @@ html = r"""
     });
     const lh=document.createElementNS("http://www.w3.org/2000/svg","text");
     lh.setAttribute("x", Lx-2); lh.setAttribute("y", Ly-10); lh.setAttribute("text-anchor","end");
-    lh.setAttribute("font-size","12"); lh.setAttribute("fill","#000"); lh.textContent="Spearman ρ"; svg.appendChild(lh);
+    lh.setAttribute("font-size","12"); lh.setAttribute("fill","#000"); lh.textContent="Spearman ρ (hot pink)"; svg.appendChild(lh);
   }
 
   // ---------- events ----------
