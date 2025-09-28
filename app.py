@@ -79,6 +79,10 @@ html = r"""
   .chartTall{width:100%;height:480px;border:1px dashed #9ca3af;border-radius:12px;background:#f9fafb}
 
   .grid2{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+
+  /* Tooltip */
+  #tt{position:fixed;display:none;pointer-events:none;background:#111;color:#fff;
+      padding:6px 8px;border-radius:8px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.25);z-index:9999}
 </style>
 </head>
 <body>
@@ -131,14 +135,14 @@ html = r"""
 
       <div>
         <div id="m1" class="card" style="display:none">
-          <div class="section-title">Decision Matrix (first 10 rows)</div>
+          <div class="section-title">Decision Matrix (all rows)</div>
           <div class="table-wrap"><table id="tblm1"></table></div>
         </div>
         <div id="r1" class="card" style="display:none">
           <div class="section-title">SYAI Results</div>
           <div class="table-wrap"><table id="tblr1"></table></div>
           <div class="mt6">
-            <div class="hint mb2">Bar Chart (Closeness) — pastel bars, axes black</div>
+            <div class="hint mb2">Bar Chart (Closeness) — pastel bars, axes black (value on hover)</div>
             <div class="chart2"><svg id="bar1" width="100%" height="100%"></svg></div>
           </div>
           <div class="mt6">
@@ -184,7 +188,7 @@ html = r"""
 
       <div>
         <div id="m2" class="card" style="display:none">
-          <div class="section-title">Decision Matrix (first 10 rows)</div>
+          <div class="section-title">Decision Matrix (all rows)</div>
           <div class="table-wrap"><table id="tblm2"></table></div>
         </div>
 
@@ -193,7 +197,7 @@ html = r"""
           <div class="table-wrap"><table id="mmc_table"></table></div>
 
           <div class="mt6">
-            <div class="hint mb2">Grouped Bar — <b>rank only</b> (axes black, pastel fill)</div>
+            <div class="hint mb2">Grouped Bar — <b>rank only</b> (axes black, pastel fill; value on hover)</div>
             <div class="chart2"><svg id="mmc_bar" width="100%" height="100%"></svg></div>
           </div>
 
@@ -209,7 +213,7 @@ html = r"""
           </div>
 
           <div class="mt6">
-            <div class="hint mb2">Correlation Heatmap — <b>Spearman</b> (soft blue palette with legend)</div>
+            <div class="hint mb2">Correlation Heatmap — <b>Spearman</b> (soft blue palette with legend on right; value on hover)</div>
             <div class="chartTall"><svg id="mmc_heat" width="100%" height="100%"></svg></div>
           </div>
         </div>
@@ -217,6 +221,9 @@ html = r"""
     </div>
   </div>
 </div>
+
+<!-- tooltip -->
+<div id="tt"></div>
 
 <script>
 (function(){
@@ -372,7 +379,8 @@ A5,180,6,7
     cols.forEach(c=>{ const th=document.createElement("th"); th.textContent=c; trh.appendChild(th); });
     thead.appendChild(trh); tb.appendChild(thead);
     const tbody=document.createElement("tbody");
-    rows.slice(0,10).forEach(r=>{
+    // show ALL rows (no 10-row limit)
+    rows.forEach(r=>{
       const tr=document.createElement("tr");
       cols.forEach(c=>{ const td=document.createElement("td"); td.textContent=String(r[c]??""); tr.appendChild(td); });
       tbody.appendChild(tr);
@@ -427,21 +435,25 @@ A5,180,6,7
     return U;
   }
 
-  // SYAI core (unchanged)
+  // --------- SYAI core (FIXED: ideals from U; weights applied inside distance) ----------
   function computeSYAI(rows, crits, types, ideals, weights, wmode, beta){
     const U = computeU(rows, crits, types, ideals);
     const w = computeWeights(crits, weights, wmode);
 
-    // weighted utilities for L1 distances
-    const W = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, U[c][i]*w[c]])) );
+    // ideals computed in normalized U-space
     const Aplus={}, Aminus={};
     crits.forEach(c=>{
-      const arr=W.map(r=>r[c]); Aplus[c]=Math.max(...arr); Aminus[c]=Math.min(...arr);
+      const arr = U[c];
+      Aplus[c]  = Math.max(...arr);
+      Aminus[c] = Math.min(...arr);
     });
 
     return rows.map((r,i)=>{
       let Dp=0, Dm=0;
-      crits.forEach(c=>{ Dp+=Math.abs(W[i][c]-Aplus[c]); Dm+=Math.abs(W[i][c]-Aminus[c]); });
+      crits.forEach(c=>{
+        Dp += w[c]*Math.abs(U[c][i] - Aplus[c]);
+        Dm += w[c]*Math.abs(U[c][i] - Aminus[c]);
+      });
       const denom = beta*Dp + (1-beta)*Dm || Number.EPSILON;
       const Close = ((1-beta)*Dm)/denom;
       return { alt:String(r["Alternative"]), Dp, Dm, Close, Urow:Object.fromEntries(crits.map(c=>[c,U[c][i]])), w };
@@ -512,14 +524,16 @@ A5,180,6,7
     const Smin=Math.min(...S), Smax=Math.max(...S), Rmin=Math.min(...R), Rmax=Math.max(...R);
     const VIKOR = S.map((_,i)=> 0.5*((S[i]-Smin)/((Smax-Smin)||1)) + 0.5*((R[i]-Rmin)/((Rmax-Rmin)||1)));
 
-    // ---------- SYAI ----------
+    // ---------- SYAI (fixed) ----------
     const sy = computeSYAI(r2, crit2, type2, ideal2, w2, wmode2, 0.5);
     const SYAI = sy.map(o=> o.Close);
 
-    // ---------- COBRA (fixed, SAW-space, mean-centered) ----------
-    const d = r2.map((_,i)=> crit2.reduce((s,c)=> s + w[c]*(1 - U[c][i]), 0));
-    const meanD = d.reduce((s,v)=>s+v,0)/d.length;
-    const COBRA = d.map(v=> v - meanD); // lower=better; can be negative
+    // ---------- COBRA (FIXED: mean-centered SAW utilities; lower = better; can be negative) ----------
+    const mu = Object.fromEntries(crit2.map(c=>{
+      const avg = (U[c].reduce((s,v)=>s+v,0)/U[c].length);
+      return [c, avg];
+    }));
+    const COBRA = r2.map((_,i)=> crit2.reduce((s,c)=> s + w[c]*(mu[c] - U[c][i]), 0));
 
     // ranks
     function ranksHigher(a){ const idx=a.map((v,i)=>({v,i})).sort((x,y)=> y.v-x.v); const rk=new Array(a.length); idx.forEach((o,k)=> rk[o.i]=k+1); return rk; }
@@ -551,8 +565,18 @@ A5,180,6,7
     // charts
     drawCmpBars(methods, ranks, r2.map(r=> String(r["Alternative"])));
     drawCmpScatter({methods, names:r2.map(r=> String(r["Alternative"]))}, $("mmc_x").value, $("mmc_y").value);
-    drawHeatSpearman({methods});  // soft palette + legend
+    drawHeatSpearman({methods});  // soft palette + legend + hover
   }
+
+  // ======== Tooltip helpers ========
+  const TT = $("tt");
+  function showTT(x,y,html){
+    TT.style.display="block";
+    TT.style.left = (x+12)+"px";
+    TT.style.top  = (y+12)+"px";
+    TT.innerHTML = html;
+  }
+  function hideTT(){ TT.style.display="none"; }
 
   // ======== Charts ========
   function drawSimpleBar(svgId, data){
@@ -582,7 +606,11 @@ A5,180,6,7
       const x=padL+i*cell+(cell-barW)/2, h=(H-padT-padB)*(d.value/max), y=H-padB-h;
       const r=document.createElementNS("http://www.w3.org/2000/svg","rect");
       r.setAttribute("x",x); r.setAttribute("y",y); r.setAttribute("width",barW); r.setAttribute("height",h);
-      r.setAttribute("fill", PASTELS[i%PASTELS.length]); svg.appendChild(r);
+      r.setAttribute("fill", PASTELS[i%PASTELS.length]); 
+      r.addEventListener("mousemove",(ev)=> showTT(ev.clientX, ev.clientY, `<b>${d.name}</b><br/>${d.value.toFixed(6)}`));
+      r.addEventListener("mouseleave", hideTT);
+      svg.appendChild(r);
+
       const lbl=document.createElementNS("http://www.w3.org/2000/svg","text");
       lbl.setAttribute("x",x+barW/2); lbl.setAttribute("y",H-12); lbl.setAttribute("text-anchor","middle");
       lbl.setAttribute("font-size","12"); lbl.setAttribute("fill","#000"); lbl.textContent=d.name; svg.appendChild(lbl);
@@ -609,10 +637,10 @@ A5,180,6,7
       const x=sx(pt.rank), y=sy(pt.value);
       dstr += (i===0? "M":"L")+x+" "+y+" ";
       const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
-      c.setAttribute("cx",x); c.setAttribute("cy",y); c.setAttribute("r","4"); c.setAttribute("fill","#64748b"); svg.appendChild(c);
-      const t=document.createElementNS("http://www.w3.org/2000/svg","text");
-      t.setAttribute("x",x+6); t.setAttribute("y",y-6); t.setAttribute("font-size","12"); t.setAttribute("fill","#000");
-      t.textContent=pt.value.toFixed(3); svg.appendChild(t);
+      c.setAttribute("cx",x); c.setAttribute("cy",y); c.setAttribute("r","4"); c.setAttribute("fill","#64748b");
+      c.addEventListener("mousemove",(ev)=> showTT(ev.clientX, ev.clientY, `<b>Rank ${pt.rank}</b><br/>${pt.value.toFixed(6)}`));
+      c.addEventListener("mouseleave", hideTT);
+      svg.appendChild(c);
     });
     p.setAttribute("d", dstr.trim()); p.setAttribute("fill","none"); p.setAttribute("stroke","#64748b"); p.setAttribute("stroke-width","2");
     svg.appendChild(p);
@@ -659,12 +687,10 @@ A5,180,6,7
         const rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
         rect.setAttribute("x",x0 + k*barW); rect.setAttribute("y",h>=0? y : H-padB);
         rect.setAttribute("width",barW-1.5); rect.setAttribute("height",Math.abs(h));
-        rect.setAttribute("fill", PASTELS[k%PASTELS.length]); svg.appendChild(rect);
-        const t=document.createElementNS("http://www.w3.org/2000/svg","text");
-        t.setAttribute("x",x0 + k*barW + (barW-1.5)/2); t.setAttribute("y",(h>=0? y : H-padB)-4);
-        t.setAttribute("text-anchor","middle"); t.setAttribute("font-size","11"); t.setAttribute("fill","#000");
-        t.textContent = String(v.toFixed(2)); // show value for quick comparison
-        svg.appendChild(t);
+        rect.setAttribute("fill", PASTELS[k%PASTELS.length]);
+        rect.addEventListener("mousemove",(ev)=> showTT(ev.clientX, ev.clientY, `<b>${m}</b> • ${nm}<br/>${v.toFixed(6)}`));
+        rect.addEventListener("mouseleave", hideTT);
+        svg.appendChild(rect);
       });
     });
   }
@@ -687,9 +713,10 @@ A5,180,6,7
 
     res.names.forEach((nm,i)=>{
       const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
-      c.setAttribute("cx",sx(xs[i])); c.setAttribute("cy",sy(ys[i])); c.setAttribute("r","5"); c.setAttribute("fill","#6b7280"); svg.appendChild(c);
-      const t=document.createElementNS("http://www.w3.org/2000/svg","text");
-      t.setAttribute("x",sx(xs[i])+6); t.setAttribute("y",sy(ys[i])-6); t.setAttribute("font-size","12"); t.setAttribute("fill","#000"); t.textContent=nm; svg.appendChild(t);
+      c.setAttribute("cx",sx(xs[i])); c.setAttribute("cy",sy(ys[i])); c.setAttribute("r","5"); c.setAttribute("fill","#6b7280");
+      c.addEventListener("mousemove",(ev)=> showTT(ev.clientX, ev.clientY, `<b>${nm}</b><br/>${mx}: ${xs[i].toFixed(6)}<br/>${my}: ${ys[i].toFixed(6)}`));
+      c.addEventListener("mouseleave", hideTT);
+      svg.appendChild(c);
     });
 
     const mean=(a)=> a.reduce((s,v)=>s+v,0)/a.length;
@@ -707,13 +734,13 @@ A5,180,6,7
     cap.setAttribute("font-size","12"); cap.setAttribute("fill","#000"); cap.textContent="Pearson r = "+r.toFixed(3); svg.appendChild(cap);
   }
 
-  // Spearman heatmap (soft readable blues) + legend
+  // Spearman heatmap (soft readable blues) + legend + hover
   function drawHeatSpearman(res){
     const methods=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
     const svg=$("mmc_heat"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const W=(svg.getBoundingClientRect().width||900), H=(svg.getBoundingClientRect().height||480);
     svg.setAttribute("viewBox","0 0 "+W+" "+H);
-    const padL=120, padR=40, padT=60, padB=80;
+    const padL=120, padR=60, padT=60, padB=80;
     const n=methods.length;
 
     // rank arrays
@@ -758,24 +785,21 @@ A5,180,6,7
       ty.setAttribute("text-anchor","end"); ty.setAttribute("font-size","12"); ty.setAttribute("fill","#000"); ty.textContent=methods[i]; svg.appendChild(ty);
     }
 
-    // cells
+    // cells (no static numbers; show value on hover)
     for(let i=0;i<n;i++){
       for(let j=0;j<n;j++){
-        const r = R[i][j];
+        const val = R[i][j];
         const x=padL + j*cellW, y=padT + i*cellH;
         const rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
         rect.setAttribute("x",x); rect.setAttribute("y",y); rect.setAttribute("width",cellW-1); rect.setAttribute("height",cellH-1);
-        rect.setAttribute("fill", colorFor(r)); rect.setAttribute("stroke","#ffffff"); rect.setAttribute("stroke-width","0.5");
+        rect.setAttribute("fill", colorFor(val)); rect.setAttribute("stroke","#ffffff"); rect.setAttribute("stroke-width","0.5");
+        rect.addEventListener("mousemove",(ev)=> showTT(ev.clientX, ev.clientY, `<b>${methods[i]}</b> vs <b>${methods[j]}</b><br/>ρ = ${val.toFixed(3)}`));
+        rect.addEventListener("mouseleave", hideTT);
         svg.appendChild(rect);
-        const t=document.createElementNS("http://www.w3.org/2000/svg","text");
-        t.setAttribute("x",x+cellW/2); t.setAttribute("y",y+cellH/2+4);
-        t.setAttribute("text-anchor","middle"); t.setAttribute("font-size","11"); t.setAttribute("fill","#000");
-        t.textContent = r.toFixed(3);
-        svg.appendChild(t);
       }
     }
 
-    // ---- legend (color scale -1..1) ----
+    // ---- legend (color scale -1..1) on right ----
     const Lx = padL + (cellW*n) + 20, Ly = padT, Lw = 16, Lh = cellH*n;
     const steps = 60;
     for(let s=0;s<steps;s++){
@@ -817,4 +841,4 @@ html = html.replace("CORR_DATA_URI", CORR_URI or "")
 html = html.replace("HAS_SCATTER_FLAG", "1" if SCATTER_FOUND else "0")
 html = html.replace("HAS_CORR_FLAG", "1" if CORR_FOUND else "0")
 
-components.html(html, height=3850, scrolling=True)
+components.html(html, height=4000, scrolling=True)
