@@ -550,93 +550,89 @@ html = r"""
     });
   }
 
-  // --------- COBRA (per Sec. 2.2, Eqs. 7–25) ----------
-  function computeCOBRA(rows, crits, types, weights, wmode){
-    const n = rows.length, m = crits.length;
-    const w = computeWeights(crits, weights, wmode);
+  // --------- COBRA (per Sec. 2.2, Eqs. 6–26) ----------
+function computeCOBRA(rows, crits, types, weights, wmode){
+  const n = rows.length;
+  const w = computeWeights(crits, weights, wmode);
 
-    // Step 2: max-normalize (Eq. 7-8)
-    const A = {}; // a_ij
-    crits.forEach(c=>{
-      const vals = rows.map(r=> toNum(r[c]));
-      const M = Math.max(...vals) || 1;
-      A[c] = vals.map(x=> x / (M||1));
-    });
+  // Step 2 (Eq. 7): normalize by column max (for ALL criteria)
+  const F = {}; // f_ij
+  crits.forEach(c=>{
+    const vals = rows.map(r=> toNum(r[c]));
+    const maxv = Math.max(...vals) || 1;
+    F[c] = vals.map(x => x / (maxv || 1));
+  });
 
-    // Step 3: weighted normalized matrix Δ_w (Eq. 9)
-    const WA = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, w[c]*A[c][i]])));
+  // Step 3 (Eq. 8): weighted normalized matrix, r_ij = f_ij * w_j
+  const Rw = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, F[c][i] * w[c]])));
 
-    // Step 4: PIS/NIS/AS (Eqs. 10–12)
-    const PIS={}, NIS={}, AS={};
-    crits.forEach(c=>{
-      const arr = WA.map(r=> r[c]);
-      if((types[c]||"Benefit")==="Cost"){
-        PIS[c] = Math.min(...arr);
-        NIS[c] = Math.max(...arr);
-      }else{
-        PIS[c] = Math.max(...arr);
-        NIS[c] = Math.min(...arr);
-      }
-      AS[c] = arr.reduce((s,v)=>s+v,0) / n;
-    });
-
-    // helper distances (Euclidean and Taxicab)
-    function dE_to(targetVec, gate=null){ // sqrt(sum gate*(target - WA)^2)
-      return WA.map(row=>{
-        let s=0;
-        crits.forEach(c=>{
-          const diff = (targetVec[c]-row[c]);
-          const g = gate ? gate(row[c], AS[c]) : 1;
-          s += (g>0? (diff*diff) : 0);
-        });
-        return Math.sqrt(s);
-      });
+  // Step 4 (Eqs. 9–12): NIS, PIS per criterion; AS (Eq. 13)
+  const PIS = {}, NIS = {}, AS = {};
+  crits.forEach(c=>{
+    const col = Rw.map(r => r[c]);
+    if ((types[c] || "Benefit") === "Cost"){ // non-beneficial
+      PIS[c] = Math.min(...col);
+      NIS[c] = Math.max(...col);
+    } else { // beneficial
+      PIS[c] = Math.max(...col);
+      NIS[c] = Math.min(...col);
     }
-    function dT_to(targetVec, gate=null){ // sum gate*|target - WA|
-      return WA.map(row=>{
-        let s=0;
-        crits.forEach(c=>{
-          const diff = Math.abs(targetVec[c]-row[c]);
-          const g = gate ? gate(row[c], AS[c]) : 1;
-          s += (g>0? diff : 0);
-        });
-        return s;
+    AS[c] = col.reduce((s,v)=>s+v,0) / n;
+  });
+
+  // Helpers: Euclidean and Taxicab distances with optional ε gates
+  function dE_to(target, gate=null){
+    return Rw.map(row=>{
+      let s = 0;
+      crits.forEach(c=>{
+        const use = gate ? gate(row[c], AS[c]) : 1;
+        if (use>0){
+          const d = target[c] - row[c];
+          s += d*d;
+        }
       });
-    }
-
-    // τ⁺ (Eq. 21): 1 if AS_j < w_j a_ij else 0
-    const gatePos = (wij, asj)=> (asj < wij ? 1 : 0);
-    // τ⁻ (Eq. 24): 1 if AS_j > w_j a_ij else 0
-    const gateNeg = (wij, asj)=> (asj > wij ? 1 : 0);
-
-    // Distances for each solution (Eqs. 15–23)
-    const dE_PIS = dE_to(PIS);
-    const dT_PIS = dT_to(PIS);
-    const dE_NIS = dE_to(NIS);
-    const dT_NIS = dT_to(NIS);
-    const dE_ASp = dE_to(AS, gatePos);
-    const dT_ASp = dT_to(AS, gatePos);
-    const dE_ASn = dE_to(AS, gateNeg);
-    const dT_ASn = dT_to(AS, gateNeg);
-
-    // σ per solution (Eq. 14)
-    function sigma(arr){ const mx=Math.max(...arr), mn=Math.min(...arr); return mx - mn; }
-    const s_PIS = sigma(dE_PIS);
-    const s_NIS = sigma(dE_NIS);
-    const s_ASp = sigma(dE_ASp);
-    const s_ASn = sigma(dE_ASn);
-
-    // Comprehensive distances d(S_j) (Eq. 13)  NOTE: text shows dE + σ × dE × dT
-    const dPIS = dE_PIS.map((v,i)=> v + s_PIS * v * dT_PIS[i]);
-    const dNIS = dE_NIS.map((v,i)=> v + s_NIS * v * dT_NIS[i]);
-    const dASp = dE_ASp.map((v,i)=> v + s_ASp * v * dT_ASp[i]);
-    const dASn = dE_ASn.map((v,i)=> v + s_ASn * v * dT_ASn[i]);
-
-    // Step 6: dC_i (Eq. 25), rank ASC (smaller is better; can be negative)
-    const dC = dPIS.map((_,i)=> ( dPIS[i] - dNIS[i] - dASp[i] + dASn[i] ));
-
-    return dC;
+      return Math.sqrt(s);
+    });
   }
+  function dT_to(target, gate=null){
+    return Rw.map(row=>{
+      let s = 0;
+      crits.forEach(c=>{
+        const use = gate ? gate(row[c], AS[c]) : 1;
+        if (use>0) s += Math.abs(target[c] - row[c]);
+      });
+      return s;
+    });
+  }
+
+  // Step 5: ε⁺ and ε⁻ (Eqs. 21, 24) — strict inequalities per paper
+  const gatePos = (wij, asj)=> (asj < wij ? 1 : 0); // ε⁺=1 if AS_j < r_ij
+  const gateNeg = (wij, asj)=> (asj > wij ? 1 : 0); // ε⁻=1 if AS_j > r_ij
+
+  // Distances (Eqs. 16–23)
+  const dE_PIS = dE_to(PIS),         dT_PIS = dT_to(PIS);
+  const dE_NIS = dE_to(NIS),         dT_NIS = dT_to(NIS);
+  const dE_ASp = dE_to(AS, gatePos), dT_ASp = dT_to(AS, gatePos);
+  const dE_ASn = dE_to(AS, gateNeg), dT_ASn = dT_to(AS, gateNeg);
+
+  // ρ (Eq. 14): max dE(S_j) − min dE(S_j) for each solution S
+  const rho = arr => Math.max(...arr) - Math.min(...arr);
+  const ρ_PIS = rho(dE_PIS);
+  const ρ_NIS = rho(dE_NIS);
+  const ρ_ASp = rho(dE_ASp);
+  const ρ_ASn = rho(dE_ASn);
+
+  // d(S_j) (Eq. 14): d = dE + ρ · dT   (no extra factor of dE)
+  const D_PIS = dE_PIS.map((v,i)=> v + ρ_PIS * dT_PIS[i]);
+  const D_NIS = dE_NIS.map((v,i)=> v + ρ_NIS * dT_NIS[i]);
+  const D_ASp = dE_ASp.map((v,i)=> v + ρ_ASp * dT_ASp[i]);
+  const D_ASn = dE_ASn.map((v,i)=> v + ρ_ASn * dT_ASn[i]);
+
+  // Step 6 (Eq. 26): final comprehensive distances (smaller is better; can be negative)
+  const dC = D_PIS.map((_,i)=> ( D_PIS[i] - D_NIS[i] - D_ASp[i] + D_ASn[i] ) / 4 );
+
+  return dC;
+}
 
   function runComparison(){
     if(!r2.length) return;
