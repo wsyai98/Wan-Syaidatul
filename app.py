@@ -127,6 +127,10 @@ html = r"""
   /* Tooltip */
   #tt{position:fixed;display:none;pointer-events:none;background:#fff;color:#111;
       padding:6px 8px;border-radius:8px;font-size:12px;box-shadow:0 12px 24px rgba(0,0,0,.18);border:1px solid #e5e7eb;z-index:9999}
+
+  /* Legend pills */
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid #e5e7eb;margin:0 6px 6px 0;font-size:12px}
+  .sw{width:12px;height:12px;border-radius:3px}
 </style>
 </head>
 <body class="theme-dark">
@@ -241,8 +245,9 @@ html = r"""
           <div class="table-wrap"><table id="mmc_table"></table></div>
 
           <div class="mt6">
-            <div class="hint mb2">Grouped Bar — <b>rank only</b> (axes black, pastel fill; value on hover)</div>
+            <div class="hint mb2">Grouped Bar — <b>method-colored</b> (axes black, hover values)</div>
             <div class="chart2"><svg id="mmc_bar" width="100%" height="100%"></svg></div>
+            <div id="legend" class="mt2"></div>
           </div>
 
           <div class="mt6">
@@ -275,6 +280,17 @@ html = r"""
   const show = (el,on=true)=> el.style.display = on ? "" : "none";
   const PASTELS  = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"]; // bars & dots
   const STRIKING = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"]; // scatter only
+
+  // Fixed colors per METHOD (legend + bars)
+  const METHOD_COLORS = {
+    "TOPSIS":"#60a5fa",
+    "VIKOR":"#34d399",
+    "SAW":"#fbbf24",
+    "SYAI":"#a78bfa",
+    "COBRA":"#f472b6",
+    "WASPAS":"#93c5fd",
+    "MOORA":"#86efac"
+  };
 
   // ---------- theme ----------
   let dark=true;
@@ -534,6 +550,93 @@ html = r"""
     });
   }
 
+  // --------- COBRA (per Sec. 2.2, Eqs. 7–25) ----------
+  function computeCOBRA(rows, crits, types, weights, wmode){
+    const n = rows.length, m = crits.length;
+    const w = computeWeights(crits, weights, wmode);
+
+    // Step 2: max-normalize (Eq. 7-8)
+    const A = {}; // a_ij
+    crits.forEach(c=>{
+      const vals = rows.map(r=> toNum(r[c]));
+      const M = Math.max(...vals) || 1;
+      A[c] = vals.map(x=> x / (M||1));
+    });
+
+    // Step 3: weighted normalized matrix Δ_w (Eq. 9)
+    const WA = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, w[c]*A[c][i]])));
+
+    // Step 4: PIS/NIS/AS (Eqs. 10–12)
+    const PIS={}, NIS={}, AS={};
+    crits.forEach(c=>{
+      const arr = WA.map(r=> r[c]);
+      if((types[c]||"Benefit")==="Cost"){
+        PIS[c] = Math.min(...arr);
+        NIS[c] = Math.max(...arr);
+      }else{
+        PIS[c] = Math.max(...arr);
+        NIS[c] = Math.min(...arr);
+      }
+      AS[c] = arr.reduce((s,v)=>s+v,0) / n;
+    });
+
+    // helper distances (Euclidean and Taxicab)
+    function dE_to(targetVec, gate=null){ // sqrt(sum gate*(target - WA)^2)
+      return WA.map(row=>{
+        let s=0;
+        crits.forEach(c=>{
+          const diff = (targetVec[c]-row[c]);
+          const g = gate ? gate(row[c], AS[c]) : 1;
+          s += (g>0? (diff*diff) : 0);
+        });
+        return Math.sqrt(s);
+      });
+    }
+    function dT_to(targetVec, gate=null){ // sum gate*|target - WA|
+      return WA.map(row=>{
+        let s=0;
+        crits.forEach(c=>{
+          const diff = Math.abs(targetVec[c]-row[c]);
+          const g = gate ? gate(row[c], AS[c]) : 1;
+          s += (g>0? diff : 0);
+        });
+        return s;
+      });
+    }
+
+    // τ⁺ (Eq. 21): 1 if AS_j < w_j a_ij else 0
+    const gatePos = (wij, asj)=> (asj < wij ? 1 : 0);
+    // τ⁻ (Eq. 24): 1 if AS_j > w_j a_ij else 0
+    const gateNeg = (wij, asj)=> (asj > wij ? 1 : 0);
+
+    // Distances for each solution (Eqs. 15–23)
+    const dE_PIS = dE_to(PIS);
+    const dT_PIS = dT_to(PIS);
+    const dE_NIS = dE_to(NIS);
+    const dT_NIS = dT_to(NIS);
+    const dE_ASp = dE_to(AS, gatePos);
+    const dT_ASp = dT_to(AS, gatePos);
+    const dE_ASn = dE_to(AS, gateNeg);
+    const dT_ASn = dT_to(AS, gateNeg);
+
+    // σ per solution (Eq. 14)
+    function sigma(arr){ const mx=Math.max(...arr), mn=Math.min(...arr); return mx - mn; }
+    const s_PIS = sigma(dE_PIS);
+    const s_NIS = sigma(dE_NIS);
+    const s_ASp = sigma(dE_ASp);
+    const s_ASn = sigma(dE_ASn);
+
+    // Comprehensive distances d(S_j) (Eq. 13)  NOTE: text shows dE + σ × dE × dT
+    const dPIS = dE_PIS.map((v,i)=> v + s_PIS * v * dT_PIS[i]);
+    const dNIS = dE_NIS.map((v,i)=> v + s_NIS * v * dT_NIS[i]);
+    const dASp = dE_ASp.map((v,i)=> v + s_ASp * v * dT_ASp[i]);
+    const dASn = dE_ASn.map((v,i)=> v + s_ASn * v * dT_ASn[i]);
+
+    // Step 6: dC_i (Eq. 25), rank ASC (smaller is better; can be negative)
+    const dC = dPIS.map((_,i)=> ( dPIS[i] - dNIS[i] - dASp[i] + dASn[i] ) / 4 );
+    return dC;
+  }
+
   function runComparison(){
     if(!r2.length) return;
 
@@ -601,18 +704,8 @@ html = r"""
     const sy = computeSYAI_exact(r2, crit2, type2, ideal2, w2, wmode2, 0.5);
     const SYAI = sy.map(o=> o.Close);
 
-    // ---------- COBRA (utility-space comprehensive distance; higher is better) ----------
-    // Build distances to PIS=1 and NIS=0 on SAW utilities U[c] with weights w[c]
-    const COBRA = r2.map((_, i) => {
-      let Dp = 0, Dm = 0;
-      crit2.forEach(c => {
-        const u = Math.max(0, Math.min(1, U[c][i]));
-        const wc = w[c];
-        Dp += wc * Math.abs(u - 1.0); // to PIS
-        Dm += wc * Math.abs(u - 0.0); // to NIS
-      });
-      return Dm / ((Dp + Dm) || 1e-12); // closeness (higher = better)
-    });
+    // ---------- COBRA (per paper; can be negative) ----------
+    const COBRA = computeCOBRA(r2, crit2, type2, w2, wmode2);
 
     // ranks
     function ranksHigher(a){ const idx=a.map((v,i)=>({v,i})).sort((x,y)=> y.v-x.v); const rk=new Array(a.length); idx.forEach((o,k)=> rk[o.i]=k+1); return rk; }
@@ -620,7 +713,7 @@ html = r"""
 
     const methods={TOPSIS, VIKOR, SAW, SYAI, COBRA, WASPAS, MOORA};
     const ranks={ TOPSIS:ranksHigher(TOPSIS), VIKOR:ranksLower(VIKOR), SAW:ranksHigher(SAW),
-                  SYAI:ranksHigher(SYAI), COBRA:ranksHigher(COBRA), WASPAS:ranksHigher(WASPAS), MOORA:ranksHigher(MOORA) };
+                  SYAI:ranksHigher(SYAI), COBRA:ranksLower(COBRA), WASPAS:ranksHigher(WASPAS), MOORA:ranksHigher(MOORA) };
 
     const order=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
 
@@ -680,7 +773,7 @@ html = r"""
       const x=padL+i*cell+(cell-barW)/2, h=(H-padT-padB)*(d.value/max), y=H-padB-h;
       const r=document.createElementNS("http://www.w3.org/2000/svg","rect");
       r.setAttribute("x",x); r.setAttribute("y",y); r.setAttribute("width",barW); r.setAttribute("height",h);
-      r.setAttribute("fill", PASTELS[i%PASTELS.length]); 
+      r.setAttribute("fill", PASTELS[i%PASTELS.length]);
       r.addEventListener("mousemove",(ev)=> showTT(ev.clientX, ev.clientY, `<b>${d.name}</b><br/>${d.value.toFixed(6)}`));
       r.addEventListener("mouseleave", hideTT);
       svg.appendChild(r);
@@ -724,7 +817,7 @@ html = r"""
     const svg=$("mmc_bar"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const W=(svg.getBoundingClientRect().width||900), H=(svg.getBoundingClientRect().height||360);
     svg.setAttribute("viewBox","0 0 "+W+" "+H);
-    const padL=70,padR=20,padT=20,padB=60;
+    const padL=70,padR=20,padT=20,padB=66;
     const order=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
     const vals = names.map((nm,i)=> order.map(m=> methods[m][i]));
     const max = Math.max(...vals.flat()), min = Math.min(...vals.flat());
@@ -747,25 +840,36 @@ html = r"""
     }
 
     const cell=(W-padL-padR)/names.length;
-    const barW=(cell*0.8)/order.length;
+    const gap=4; // small indent between method groups
+    const barW=((cell*0.8)-(order.length-1)*gap)/order.length;
 
     names.forEach((nm,i)=>{
-      const x0=padL + i*cell + (cell - barW*order.length)/2;
+      const x0=padL + i*cell + (cell - (barW*order.length + gap*(order.length-1)))/2;
       const lbl=document.createElementNS("http://www.w3.org/2000/svg","text");
-      lbl.setAttribute("x",x0 + barW*order.length/2); lbl.setAttribute("y",H-8);
+      lbl.setAttribute("x",x0 + (barW*order.length + gap*(order.length-1))/2); lbl.setAttribute("y",H-8);
       lbl.setAttribute("text-anchor","middle"); lbl.setAttribute("font-size","12"); lbl.setAttribute("fill","#000"); lbl.textContent=nm; svg.appendChild(lbl);
       order.forEach((m,k)=>{
         const v=methods[m][i];
         const y=H-padB - (H-padT-padB)*((v-yMin)/range);
         const h=H-padB - y;
         const rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
-        rect.setAttribute("x",x0 + k*barW); rect.setAttribute("y",h>=0? y : H-padB);
-        rect.setAttribute("width",barW-1.5); rect.setAttribute("height",Math.abs(h));
-        rect.setAttribute("fill", PASTELS[k%PASTELS.length]);
+        rect.setAttribute("x",x0 + k*(barW+gap)); rect.setAttribute("y",h>=0? y : H-padB);
+        rect.setAttribute("width",barW); rect.setAttribute("height",Math.abs(h));
+        rect.setAttribute("fill", METHOD_COLORS[m] || PASTELS[k%PASTELS.length]);
         rect.addEventListener("mousemove",(ev)=> showTT(ev.clientX, ev.clientY, `<b>${m}</b> • ${nm}<br/>${v.toFixed(6)}`));
         rect.addEventListener("mouseleave", hideTT);
         svg.appendChild(rect);
       });
+    });
+
+    // Legend (method → color)
+    const leg = $("legend"); leg.innerHTML="";
+    order.forEach(m=>{
+      const pill = document.createElement("span"); pill.className="pill";
+      const sw = document.createElement("span"); sw.className="sw"; sw.style.background = METHOD_COLORS[m] || "#bbb";
+      const txt = document.createElement("span"); txt.textContent = m;
+      pill.appendChild(sw); pill.appendChild(txt);
+      leg.appendChild(pill);
     });
   }
 
@@ -837,7 +941,6 @@ html = r"""
     const ranks = data.map(arr=> rankArray(arr));
     const R = methods.map((_,i)=> methods.map((_,j)=> pearson(ranks[i], ranks[j])));
 
-    // Hot pink palette from very light to hot pink
     function colorFor(v){ // v in [-1,1]
       const t = (v+1)/2; // 0..1
       const c0 = {r:255,g:233,b:242}; // #ffe9f2 very light pink
@@ -895,7 +998,7 @@ html = r"""
       t.setAttribute("x", Lx + Lw + 6); t.setAttribute("y", y+4); t.setAttribute("font-size","12"); t.setAttribute("fill","#000");
       t.textContent = v.toFixed(1); svg.appendChild(t);
     });
-    const lh=document.createElementNS("http://www.w3.org/2000/svg","text");
+    const lh=document.createElementNS("http://www.w3.org/200/svg","text");
     lh.setAttribute("x", Lx-2); lh.setAttribute("y", Ly-10); lh.setAttribute("text-anchor","end");
     lh.setAttribute("font-size","12"); lh.setAttribute("fill","#000"); lh.textContent="Spearman ρ (hot pink)"; svg.appendChild(lh);
   }
