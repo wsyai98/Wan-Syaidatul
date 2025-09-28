@@ -550,53 +550,63 @@ html = r"""
     });
   }
 
-// --------- COBRA (Eqs. 6–26; matches your Excel & Table 9) ----------
+// --------- COBRA (Eqs. 6–26; matches your Excel exactly) ----------
 function computeCOBRA(rows, crits, types, weights, wmode){
   const n = rows.length;
-  const w = computeWeights(crits, weights, wmode);  // equal => 1/m; custom => normalized
+  const w = computeWeights(crits, weights, wmode);   // equal -> 1/m; custom -> normalized
 
-  // Step 2 (Eq. 7): max-normalize for ALL criteria (benefit & cost)
-  const F = {};
+  // Step 2 (Eq. 7): max-normalize for ALL criteria
+  const F = {}; // f_ij
   crits.forEach(c=>{
     const vals = rows.map(r => toNum(r[c]));
     const vmax = Math.max(...vals) || 1;
     F[c] = vals.map(x => x / (vmax || 1));
   });
 
-  // Step 3 (Eq. 8): weighted normalized matrix r_ij = f_ij * w_j
-  const Rw = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, F[c][i]*w[c]])));
+  // Step 3 (Eq. 8): weighted normalized r_ij = f_ij * w_j
+  const Rw = rows.map((_,i)=> Object.fromEntries(crits.map(c => [c, F[c][i] * w[c]])));
 
   // Step 4 (Eqs. 9–12) + AS (Eq. 13)
   const PIS = {}, NIS = {}, AS = {};
   crits.forEach(c=>{
-    const col = Rw.map(r=> r[c]);
-    if ((types[c] || "Benefit") === "Cost"){   // non-beneficial
+    const col = Rw.map(r => r[c]);
+    if ((types[c] || "Benefit") === "Cost"){ // non-beneficial
       PIS[c] = Math.min(...col);
       NIS[c] = Math.max(...col);
-    } else {                                   // beneficial
+    } else {                                  // beneficial
       PIS[c] = Math.max(...col);
       NIS[c] = Math.min(...col);
     }
     AS[c] = col.reduce((s,v)=>s+v,0) / n;
   });
 
-  // Helpers: Euclidean / Taxicab with optional gates
+  // Helpers
+  const cols = crits;
   function dE_to(target, gate=null){
     return Rw.map(row=>{
-      let s = 0;
-      crits.forEach(c=>{
+      let s=0;
+      cols.forEach(c=>{
         const use = gate ? gate(row[c], AS[c]) : 1;
         if(use>0){ const d = target[c]-row[c]; s += d*d; }
       });
       return Math.sqrt(s);
     });
   }
-  function dT_to(target, gate=null){
+  // Excel behavior for PIS/NIS: | sum_j (target_j - r_ij) |
+  function dT_signed_sum(target){
     return Rw.map(row=>{
       let s = 0;
-      crits.forEach(c=>{
+      cols.forEach(c=>{ s += (target[c] - row[c]); });
+      return Math.abs(s);
+    });
+  }
+  // AS± use standard taxicab on gated subset: sum_j |target_j - r_ij|
+  function dT_gated(target, gate){
+    return Rw.map(row=>{
+      let s=0;
+      cols.forEach(c=>{
         const use = gate ? gate(row[c], AS[c]) : 1;
-        if(use>0) s += Math.abs(target[c]-row[c]);
+        if(use>0) s += Math.abs(target[c] - row[c]);
       });
       return s;
     });
@@ -606,25 +616,26 @@ function computeCOBRA(rows, crits, types, weights, wmode){
   const gatePos = (rij, asj)=> (asj < rij ? 1 : 0); // ε⁺
   const gateNeg = (rij, asj)=> (asj > rij ? 1 : 0); // ε⁻
 
-  // Distances (Eqs. 16–23)
-  const dE_PIS = dE_to(PIS),         dT_PIS = dT_to(PIS);
-  const dE_NIS = dE_to(NIS),         dT_NIS = dT_to(NIS);
-  const dE_ASp = dE_to(AS, gatePos), dT_ASp = dT_to(AS, gatePos);
-  const dE_ASn = dE_to(AS, gateNeg), dT_ASn = dT_to(AS, gateNeg);
+  // Distances
+  const dE_PIS = dE_to(PIS),          dT_PIS = dT_signed_sum(PIS);
+  const dE_NIS = dE_to(NIS),          dT_NIS = dT_signed_sum(NIS);
+  const dE_ASp = dE_to(AS, gatePos),  dT_ASp = dT_gated(AS, gatePos);
+  const dE_ASn = dE_to(AS, gateNeg),  dT_ASn = dT_gated(AS, gateNeg);
 
-  // ρ (Eq. 14): max dE − min dE (for each solution)
+  // ρ (Eq. 14): max dE − min dE for each solution set
   const rho = arr => Math.max(...arr) - Math.min(...arr);
   const ρP = rho(dE_PIS), ρN = rho(dE_NIS), ρAp = rho(dE_ASp), ρAn = rho(dE_ASn);
 
-  // Eq. 14: d = dE + ρ * dE * dT   (note the multiplicative dE)
+  // Eq. 14: d = dE + ρ * dE * dT  (multiplicative dE per your Excel)
   const D_PIS = dE_PIS.map((v,i)=> v + ρP  * v * dT_PIS[i]);
   const D_NIS = dE_NIS.map((v,i)=> v + ρN  * v * dT_NIS[i]);
   const D_ASp = dE_ASp.map((v,i)=> v + ρAp * v * dT_ASp[i]);
   const D_ASn = dE_ASn.map((v,i)=> v + ρAn * v * dT_ASn[i]);
 
-  // Step 6 (Eq. 26): final comprehensive value (smaller is better; can be negative)
+  // Step 6 (Eq. 26): final (smaller is better); keep the ÷4
   return D_PIS.map((_,i)=> ( D_PIS[i] - D_NIS[i] - D_ASp[i] + D_ASn[i] ) / 4 );
 }
+
 
   function runComparison(){
     if(!r2.length) return;
