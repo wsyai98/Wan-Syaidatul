@@ -633,7 +633,8 @@ html = r"""
     const dASn = dE_ASn.map((v,i)=> v + s_ASn * v * dT_ASn[i]);
 
     // Step 6: dC_i (Eq. 25), rank ASC (smaller is better; can be negative)
-    const dC = dPIS.map((_,i)=> ( dPIS[i] - dNIS[i] - dASp[i] + dASn[i] ) / 4 );
+    const dC = dPIS.map((_,i)=> ( dPIS[i] - dNIS[i] - dASp[i] + dASn[i] ));
+
     return dC;
   }
 
