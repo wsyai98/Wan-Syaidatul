@@ -5,10 +5,9 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="SYAI-Rank", layout="wide")
-
 APP_DIR = Path(__file__).resolve().parent
 
-# ---------- embed local images if you add them later ----------
+# ---------- Optional local images (kept) ----------
 def img_data_uri_try(candidates: list[str]) -> tuple[str, bool]:
     for name in candidates:
         p = Path(name)
@@ -28,19 +27,16 @@ CORR_URI, CORR_FOUND = img_data_uri_try(
     ["corr_matrix.png", "assets/corr_matrix.png"]
 )
 
-# ---------- try to load user's sample CSV from /mnt/data ----------
-def load_sample_csv() -> str:
-    # user-uploaded path (if available in the runtime)
+# ---------- Single source of truth for the sample CSV ----------
+def load_sample_csv_text() -> str:
     p = Path("/mnt/data/sample (1).csv")
     if p.exists():
-        try:
-            return p.read_text(encoding="utf-8")
-        except Exception:
+        for enc in ("utf-8", "latin-1"):
             try:
-                return p.read_text(encoding="latin-1")
+                return p.read_text(encoding=enc)
             except Exception:
                 pass
-    # fallback simple demo
+    # Fallback tiny demo
     return (
         "Alternative,Cost,Quality,Delivery\n"
         "A1,200,8,4\n"
@@ -50,9 +46,9 @@ def load_sample_csv() -> str:
         "A5,180,6,7\n"
     )
 
-SAMPLE_CSV = load_sample_csv()
+SAMPLE_CSV = load_sample_csv_text()
 
-# ---------- base page background ----------
+# ---------- base page background (kept) ----------
 st.markdown("""
 <style>
   .stApp { background: linear-gradient(180deg, #0b0b0f 0%, #0b0b0f 35%, #ffe4e6 120%) !important; }
@@ -75,7 +71,7 @@ html = r"""
     --card-dark:#0f1115cc; --card-light:#ffffffcc;
     --text-light:#f5f5f5;
     --pink:#ec4899; --pink-700:#db2777;
-    --border-dark:#262b35; --border-light:#fbcfe8;
+    --border-dark:#262b35; --border-light:#f1f5f9;
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
@@ -109,8 +105,9 @@ html = r"""
   .grid{display:grid;gap:16px;grid-template-columns:1fr}
   @media (min-width:1024px){.grid{grid-template-columns:1fr 2fr}}
 
-  .card{background:var(--card-light);color:#000;border-radius:16px;padding:18px;border:1px solid var(--border-light);backdrop-filter:blur(6px)}
+  .card{border-radius:16px;padding:18px;border:1px solid var(--border-light);backdrop-filter:blur(6px)}
   .card.dark{background:var(--card-dark);color:#e5e7eb;border-color:var(--border-dark)}
+  .card.light{background:var(--card-light);color:#111;border-color:var(--border-light)}
   body.theme-light .card.dark{background:#fff;color:#111;border-color:#e5e7eb}
 
   .section-title{font-weight:700;font-size:18px;margin-bottom:12px;color:#f9a8d4}
@@ -137,8 +134,8 @@ html = r"""
   <div class="header">
     <div class="title">SYAI-Rank</div>
     <div class="row">
-      <a class="btn" id="downloadSample">⬇️ Sample CSV</a>
-      <button class="btn" id="demoBoth">📄 Load Sample (Both Tabs)</button>
+      <a class="btn" id="downloadSample">⬇️ Download Sample</a>
+      <button class="btn" id="loadSample">📄 Load Sample (Both Tabs)</button>
       <button class="toggle" id="themeToggle">🌙 Dark</button>
     </div>
   </div>
@@ -182,11 +179,11 @@ html = r"""
       </div>
 
       <div>
-        <div id="m1" class="card" style="display:none">
+        <div id="m1" class="card light" style="display:none">
           <div class="section-title">Decision Matrix (all rows)</div>
           <div class="table-wrap"><table id="tblm1"></table></div>
         </div>
-        <div id="r1" class="card" style="display:none">
+        <div id="r1" class="card light" style="display:none">
           <div class="section-title">SYAI Results</div>
           <div class="table-wrap"><table id="tblr1"></table></div>
           <div class="mt6">
@@ -234,12 +231,12 @@ html = r"""
       </div>
 
       <div>
-        <div id="m2" class="card" style="display:none">
+        <div id="m2" class="card light" style="display:none">
           <div class="section-title">Decision Matrix (all rows)</div>
           <div class="table-wrap"><table id="tblm2"></table></div>
         </div>
 
-        <div id="rcmp" class="card" style="display:none">
+        <div id="rcmp" class="card light" style="display:none">
           <div class="section-title">Scores & Ranks</div>
           <div class="table-wrap"><table id="mmc_table"></table></div>
 
@@ -276,9 +273,9 @@ html = r"""
 (function(){
   const $  = (id)=> document.getElementById(id);
   const show = (el,on=true)=> el.style.display = on ? "" : "none";
-  const PASTELS = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"];
+  const PASTELS = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"]; // bars & dots
 
-  // theme toggle
+  // ---------- theme ----------
   let dark=true;
   function applyTheme(){
     document.body.classList.toggle('theme-dark', dark);
@@ -288,13 +285,32 @@ html = r"""
   $("themeToggle").onclick = ()=>{ dark=!dark; applyTheme(); };
   applyTheme();
 
-  // Images injected by Python (keep for future use)
+  // ---------- injected by Python ----------
   const SCATTER_URI = "SCATTER_DATA_URI";
   const CORR_URI    = "CORR_DATA_URI";
   const HAS_SCATTER = "HAS_SCATTER_FLAG" === "1";
   const HAS_CORR    = "HAS_CORR_FLAG" === "1";
+  const SAMPLE_TEXT = `__INJECT_SAMPLE_CSV__`;  // single source for load + download
 
-  // CSV helpers
+  // unify sample for both: the very same bytes for link & load
+  $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(SAMPLE_TEXT);
+  $("downloadSample").download = "sample.csv";
+  $("loadSample").onclick = ()=>{ initSYAI(SAMPLE_TEXT); initCmp(SAMPLE_TEXT); };
+
+  // ---------- tabs ----------
+  function activateSYAI(e){ if(e){e.preventDefault(); e.stopPropagation();}
+    $("tabSYAI").classList.add("active"); $("tabCompare").classList.remove("active");
+    show($("viewSYAI"), true); show($("viewCompare"), false);
+  }
+  function activateCompare(e){ if(e){e.preventDefault(); e.stopPropagation();}
+    $("tabCompare").classList.add("active"); $("tabSYAI").classList.remove("active");
+    show($("viewSYAI"), false); show($("viewCompare"), true);
+  }
+  $("tabSYAI").addEventListener("click", activateSYAI);
+  $("tabCompare").addEventListener("click", activateCompare);
+  activateSYAI();
+
+  // ---------- CSV helpers ----------
   function parseCSVText(text){
     const rows=[]; let i=0, cur="", inQ=false, row=[];
     const pushCell=()=>{ row.push(cur); cur=""; };
@@ -319,26 +335,7 @@ html = r"""
   const toNum=(v)=>{ const x=parseFloat(String(v).replace(/,/g,"")); return isFinite(x)?x:NaN; };
   const vectorNorm=(vals)=>{ const d=Math.sqrt(vals.reduce((s,v)=>s+(v*v),0))||1; return vals.map(v=>v/d); };
 
-  // preloaded sample (injected by Python, tries /mnt/data/sample (1).csv)
-  const sampleCSV = `__INJECT_SAMPLE_CSV__`;
-  $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(sampleCSV);
-  $("downloadSample").download = "sample.csv";
-  $("demoBoth").onclick = ()=>{ initSYAI(sampleCSV); initCmp(sampleCSV); };
-
-  // tab switching
-  function activateSYAI(e){ if(e){e.preventDefault(); e.stopPropagation();}
-    $("tabSYAI").classList.add("active"); $("tabCompare").classList.remove("active");
-    show($("viewSYAI"), true); show($("viewCompare"), false);
-  }
-  function activateCompare(e){ if(e){e.preventDefault(); e.stopPropagation();}
-    $("tabCompare").classList.add("active"); $("tabSYAI").classList.remove("active");
-    show($("viewSYAI"), false); show($("viewCompare"), true);
-  }
-  $("tabSYAI").addEventListener("click", activateSYAI);
-  $("tabCompare").addEventListener("click", activateCompare);
-  activateSYAI();
-
-  // SAW utilities (unchanged for other methods)
+  // ---------- SAW utilities ----------
   function sawUnit(vals, type="Benefit", goal=null){
     const max=Math.max(...vals), min=Math.min(...vals);
     if(type==="Benefit"){
@@ -347,18 +344,17 @@ html = r"""
     if(type==="Cost"){
       const m = min || 1; return vals.map(x=> (m)/(x||1));
     }
-    // Goal/Ideal
+    // Ideal (Goal)
     const R=(max-min)||1;
     const g = isFinite(parseFloat(goal))? parseFloat(goal) : (min+max)/2;
     return vals.map(x=> Math.max(0, 1 - Math.abs(x-g)/R ));
   }
 
-  // ======= TAB 1: SYAI =======
+  // ================= TAB 1: SYAI =================
   let c1=[], r1=[], crit1=[], type1={}, ideal1={}, w1={}, wmode1='equal', beta1=0.5;
   $("beta1").oninput = ()=>{ beta1=parseFloat($("beta1").value); $("beta1v").textContent=beta1.toFixed(2); };
   $("w1eq").onchange = ()=>{ wmode1='equal'; $("wg1").style.display="none"; };
   $("w1c").onchange  = ()=>{ wmode1='custom'; $("wg1").style.display=""; };
-
   $("csv1").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>initSYAI(String(r.result)); r.readAsText(f); };
 
   function initSYAI(txt){
@@ -381,7 +377,6 @@ html = r"""
 
   $("runSYAI").onclick = ()=>{
     if(!r1.length) return;
-    // ---- SYAI EXACT CALC (copied from your correct routine) ----
     const res = computeSYAI_exact(r1, crit1, type1, ideal1, w1, wmode1, beta1)
                  .map(o=> ({Alternative:o.alt, Dp:o.Dp, Dm:o.Dm, Close:o.Close}));
     res.sort((a,b)=> b.Close-a.Close);
@@ -402,11 +397,10 @@ html = r"""
     drawSimpleLine("line1", res.map(d=>({rank:d.Rank, value:d.Close, name:d.Alternative})));
   };
 
-  // ======= TAB 2: COMPARISON =======
+  // ================= TAB 2: COMPARISON =================
   let c2=[], r2=[], crit2=[], type2={}, ideal2={}, w2={}, wmode2='equal';
   $("w2eq").onchange = ()=>{ wmode2='equal'; $("wg2").style.display="none"; };
   $("w2c").onchange  = ()=>{ wmode2='custom'; $("wg2").style.display=""; };
-
   $("csv2").onchange = (e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>initCmp(String(r.result)); r.readAsText(f); };
 
   function initCmp(txt){
@@ -427,7 +421,7 @@ html = r"""
     show($("m2"),true); show($("t2"),true); show($("w2"),true); show($("rcmp"),false);
   }
 
-  // shared renderers
+  // ---------- renderers (NOTE: do NOT override later!) ----------
   function renderMatrix(tid, cols, rows){
     const tb=$(tid); tb.innerHTML="";
     const thead=document.createElement("thead"); const trh=document.createElement("tr");
@@ -441,23 +435,35 @@ html = r"""
     });
     tb.appendChild(tbody);
   }
+
   function renderTypes(id, crits, types, ideals){
     const wrap=$(id); wrap.innerHTML="";
     crits.forEach(c=>{
       const box=document.createElement("div");
       const lab=document.createElement("div"); lab.className="label"; lab.textContent=c; box.appendChild(lab);
       const sel=document.createElement("select");
-      ["Benefit","Cost","Ideal (Goal)"].forEach(v=>{ const o=document.createElement("option"); o.textContent=v; sel.appendChild(o); });
+      ["Benefit","Cost","Ideal (Goal)"].forEach(v=>{
+        const o=document.createElement("option"); o.textContent=v; sel.appendChild(o);
+      });
       sel.value = types[c]||"Benefit";
-      sel.onchange = ()=>{ types[c]=sel.value; renderTypes(id,crits,types,ideals); };
+      sel.onchange = ()=>{
+        types[c]=sel.value;
+        // re-render to show/hide goal input while preserving current values
+        renderTypes(id,crits,types,ideals);
+      };
       box.appendChild(sel);
+
       if((types[c]||"")==="Ideal (Goal)"){
         const inp=document.createElement("input"); inp.className="mt2"; inp.type="number"; inp.step="any"; inp.placeholder="Goal";
-        inp.value=ideals[c]||""; inp.oninput=()=> ideals[c]=inp.value; box.appendChild(inp);
-      } else { delete ideals[c]; }
+        inp.value=ideals[c]||""; inp.oninput=()=> ideals[c]=inp.value;
+        box.appendChild(inp);
+      } else {
+        delete ideals[c];
+      }
       wrap.appendChild(box);
     });
   }
+
   function renderWeights(id, crits, weights){
     const wrap=$(id); wrap.innerHTML="";
     crits.forEach(c=>{
@@ -469,7 +475,7 @@ html = r"""
     });
   }
 
-  // ================= CORE COMPUTE =================
+  // ---------- CORE compute ----------
   function computeWeights(crits, weights, mode){
     const w={};
     if(mode==='equal'){ crits.forEach(c=> w[c]=1/crits.length); }
@@ -489,8 +495,7 @@ html = r"""
     return U;
   }
 
-  // --------- SYAI (EXACT from your correct file) ----------
-  // normalization exactly like your working routine (clamped soft mapping to [0.01, 1])
+  // --------- SYAI (exact, per your working routine) ----------
   function normalizeColumn_SYAI(vals, ctype, goal){
     const max=Math.max(...vals), min=Math.min(...vals), R=max-min;
     let xStar;
@@ -501,23 +506,19 @@ html = r"""
       xStar = isFinite(g) ? g : (vals.reduce((s,v)=>s+(isFinite(v)?v:0),0)/vals.length);
     }
     if(Math.abs(R)<1e-12) return vals.map(_=>1.0);
+    // clamp to [0.01, 1] exactly as your code logic described
     return vals.map(x=> Math.max(0.01, Math.min(1, 0.01 + (1-0.01)*(1-Math.abs(x-xStar)/R))));
   }
 
   function computeSYAI_exact(rows, crits, types, ideals, weights, wmode, beta){
-    // N same as your SYAI routine
     const N={};
     crits.forEach(c=>{
       const series = rows.map(r=> toNum(r[c]));
       N[c] = normalizeColumn_SYAI(series, types[c]||"Benefit", ideals[c]);
     });
-    // weights
     const w = computeWeights(crits, weights, wmode);
-
-    // weighted normalized
     const W = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c,N[c][i]*w[c]])) );
 
-    // ideals in W-space
     const Aplus={}, Aminus={};
     crits.forEach(c=>{
       let mx=-Infinity, mn=Infinity;
@@ -525,7 +526,6 @@ html = r"""
       Aplus[c]=mx; Aminus[c]=mn;
     });
 
-    // distances (L1) + closeness per your beta-blend
     return rows.map((r,i)=>{
       let Dp=0, Dm=0;
       crits.forEach(c=>{ Dp+=Math.abs(W[i][c]-Aplus[c]); Dm+=Math.abs(W[i][c]-Aminus[c]); });
@@ -538,7 +538,6 @@ html = r"""
   function runComparison(){
     if(!r2.length) return;
 
-    // SAW-space U and weights (one source of truth for the other methods)
     const U = computeU(r2, crit2, type2, ideal2);
     const w = computeWeights(crit2, w2, wmode2);
 
@@ -560,7 +559,7 @@ html = r"""
         if((type2[c]||"Benefit")==="Cost") sumC += w[c]*NV[c][i];
         else sumB += w[c]*NV[c][i];
       });
-      return sumB - sumC;   // may be negative
+      return sumB - sumC;
     });
 
     // ---------- TOPSIS ----------
@@ -603,7 +602,7 @@ html = r"""
     const sy = computeSYAI_exact(r2, crit2, type2, ideal2, w2, wmode2, 0.5);
     const SYAI = sy.map(o=> o.Close);
 
-    // ---------- COBRA (fixed; mean-centered SAW utilities; lower = better) ----------
+    // ---------- COBRA (mean-centered SAW utilities; lower = better) ----------
     const mu = Object.fromEntries(crit2.map(c=>{
       const avg = (U[c].reduce((s,v)=>s+v,0)/U[c].length);
       return [c, avg];
@@ -640,17 +639,15 @@ html = r"""
     // charts
     drawCmpBars(methods, ranks, r2.map(r=> String(r["Alternative"])));
     drawCmpScatter({methods, names:r2.map(r=> String(r["Alternative"]))}, $("mmc_x").value, $("mmc_y").value);
-    drawHeatSpearman({methods});  // soft palette + legend + hover
+    drawHeatSpearman({methods});
   }
 
-  // ======== Tooltip ========
+  // ---------- Tooltip ----------
   const TT = $("tt");
-  function showTT(x,y,html){
-    TT.style.display="block"; TT.style.left=(x+12)+"px"; TT.style.top=(y+12)+"px"; TT.innerHTML=html;
-  }
+  function showTT(x,y,html){ TT.style.display="block"; TT.style.left=(x+12)+"px"; TT.style.top=(y+12)+"px"; TT.innerHTML=html; }
   function hideTT(){ TT.style.display="none"; }
 
-  // ======== Charts ========
+  // ---------- Charts ----------
   function drawSimpleBar(svgId, data){
     const svg=$(svgId); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const W=(svg.getBoundingClientRect().width||800), H=(svg.getBoundingClientRect().height||360);
@@ -767,7 +764,7 @@ html = r"""
     });
   }
 
-  // Scatter (Pearson) — pastel per alternative
+  // Scatter (pastel per alternative)
   function drawCmpScatter(res, mx, my){
     const svg=$("mmc_sc"); while(svg.firstChild) svg.removeChild(svg.firstChild);
     const W=(svg.getBoundingClientRect().width||900), H=(svg.getBoundingClientRect().height||360);
@@ -786,7 +783,7 @@ html = r"""
     res.names.forEach((nm,i)=>{
       const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
       c.setAttribute("cx",sx(xs[i])); c.setAttribute("cy",sy(ys[i])); c.setAttribute("r","5"); 
-      c.setAttribute("fill", PASTELS[i%PASTELS.length]);  // pastel different for each alternative
+      c.setAttribute("fill", PASTELS[i%PASTELS.length]);
       c.addEventListener("mousemove",(ev)=> showTT(ev.clientX, ev.clientY, `<b>${nm}</b><br/>${mx}: ${xs[i].toFixed(6)}<br/>${my}: ${ys[i].toFixed(6)}`));
       c.addEventListener("mouseleave", hideTT);
       svg.appendChild(c);
@@ -807,7 +804,7 @@ html = r"""
     cap.setAttribute("font-size","12"); cap.setAttribute("fill","#000"); cap.textContent="Pearson r = "+r.toFixed(3); svg.appendChild(cap);
   }
 
-  // Spearman heatmap (soft readable blues) + legend + hover
+  // Spearman heatmap — STRICT BLUE palette + legend + hover
   function drawHeatSpearman(res){
     const methods=["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"];
     const svg=$("mmc_heat"); while(svg.firstChild) svg.removeChild(svg.firstChild);
@@ -835,12 +832,15 @@ html = r"""
     const ranks = data.map(arr=> rankArray(arr));
     const R = methods.map((_,i)=> methods.map((_,j)=> pearson(ranks[i], ranks[j])));
 
-    // soft blue palette (white -> light blue -> deep blue)
+    // Strict blue palette (no purple): very light (#e6f2ff) to deep blue (#0a58ca)
     function colorFor(v){ // v in [-1,1]
       const t = (v+1)/2; // 0..1
-      const r = Math.round(255*(1 - 0.4*t));
-      const g = Math.round(255*(1 - 0.65*t));
-      const b = Math.round(255*(1 - (1-t)*0.1));
+      // interpolate between light and deep blue; tweak for readability
+      const c0 = {r:230,g:242,b:255};  // #e6f2ff
+      const c1 = {r:10,g:88,b:202};    // #0a58ca
+      const r = Math.round(c0.r + (c1.r-c0.r)*t);
+      const g = Math.round(c0.g + (c1.g-c0.g)*t);
+      const b = Math.round(c0.b + (c1.b-c0.b)*t);
       return "rgb("+r+","+g+","+b+")";
     }
 
@@ -896,16 +896,13 @@ html = r"""
     lh.setAttribute("font-size","12"); lh.setAttribute("fill","#000"); lh.textContent="Spearman ρ"; svg.appendChild(lh);
   }
 
-  // events
+  // ---------- events ----------
   $("runCmp").onclick = ()=> runComparison();
   $("mmc_x").onchange = ()=> runComparison();
   $("mmc_y").onchange = ()=> runComparison();
 
-  // init: preload sample on both tabs
-  initSYAI(sampleCSV);
-
-  // helpers exposed within closure
-  function renderTypes(containerId, crits, types, ideals){ /* already defined above — noop for linter */ }
+  // ---------- preload sample on SYAI tab ----------
+  initSYAI(SAMPLE_TEXT);
 
 })();
 </script>
@@ -919,8 +916,7 @@ html = html.replace("CORR_DATA_URI", CORR_URI or "")
 html = html.replace("HAS_SCATTER_FLAG", "1" if SCATTER_FOUND else "0")
 html = html.replace("HAS_CORR_FLAG", "1" if CORR_FOUND else "0")
 
-# inject sample CSV into JS safely (escape backticks)
-sample_js = SAMPLE_CSV.replace("`", "\\`")
-html = html.replace("__INJECT_SAMPLE_CSV__", sample_js)
+# inject *exact same* sample text used by both Load and Download
+html = html.replace("__INJECT_SAMPLE_CSV__", SAMPLE_CSV.replace("`","\\`"))
 
 components.html(html, height=4200, scrolling=True)
