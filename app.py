@@ -551,94 +551,85 @@ html = r"""
   }
 
   // --------- COBRA (per Sec. 2.2, Eqs. 7–25) ----------
-  function computeCOBRA(rows, crits, types, weights, wmode){
-    const n = rows.length;
-    const w = computeWeights(crits, weights, wmode);
+function computeCOBRA(rows, crits, types, weights, wmode){
+  const n = rows.length;
+  const w = computeWeights(crits, weights, wmode);
 
-    // Step 2: max-normalize Δ (benefit/cost handled later by PIS/NIS)
-    const A = {};
-    crits.forEach(c=>{
-      const vals = rows.map(r=> toNum(r[c]));
-      const M = Math.max(...vals) || 1;
-      A[c] = vals.map(x=> x / (M||1));
-    });
+  // Step 2: max-normalize Δ (benefit/cost handled by PIS/NIS choice)
+  const A = {};
+  crits.forEach(c=>{
+    const vals = rows.map(r=> toNum(r[c]));
+    const M = Math.max(...vals) || 1;
+    A[c] = vals.map(x=> x / (M || 1));
+  });
 
-    // Step 3: weighted normalized matrix Δ_w
-    const WA = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, w[c]*A[c][i]])));
+  // Step 3: weighted normalized matrix Δ_w
+  const WA = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, w[c]*A[c][i]])));
 
-    // Step 4: PIS/NIS/AS on Δ_w
-    const PIS={}, NIS={}, AS={};
-    crits.forEach(c=>{
-      const arr = WA.map(r=> r[c]);
-      if((types[c]||"Benefit")==="Cost"){
-        PIS[c] = Math.min(...arr);
-        NIS[c] = Math.max(...arr);
-      }else{
-        PIS[c] = Math.max(...arr);
-        NIS[c] = Math.min(...arr);
-      }
-      AS[c] = arr.reduce((s,v)=>s+v,0) / n;
-    });
+  // Step 4: PIS / NIS / AS on Δ_w
+  const PIS={}, NIS={}, AS={};
+  crits.forEach(c=>{
+    const arr = WA.map(r=> r[c]);
+    if((types[c]||"Benefit")==="Cost"){
+      PIS[c] = Math.min(...arr);
+      NIS[c] = Math.max(...arr);
+    } else {
+      PIS[c] = Math.max(...arr);
+      NIS[c] = Math.min(...arr);
+    }
+    AS[c] = arr.reduce((s,v)=>s+v,0) / n;
+  });
 
-    // distances (Euclidean and Taxicab), with optional gates
-    function dE_to(targetVec, gate=null){
-      return WA.map(row=>{
-        let s=0;
-        crits.forEach(c=>{
-          const diff = (targetVec[c]-row[c]);
-          const g = gate ? gate(row[c], AS[c]) : 1;
-          if(g>0) s += diff*diff;
-        });
-        return Math.sqrt(s);
+  // helper distances with optional gates τ⁺ / τ⁻
+  function dE_to(targetVec, gate=null){
+    return WA.map(row=>{
+      let s=0;
+      crits.forEach(c=>{
+        const diff = targetVec[c] - row[c];
+        const g = gate ? gate(row[c], AS[c]) : 1;
+        if(g>0) s += diff*diff;
       });
-    }
-    function dT_to(targetVec, gate=null){
-      return WA.map(row=>{
-        let s=0;
-        crits.forEach(c=>{
-          const diff = Math.abs(targetVec[c]-row[c]);
-          const g = gate ? gate(row[c], AS[c]) : 1;
-          if(g>0) s += diff;
-        });
-        return s;
-      });
-    }
-
-    // gates τ⁺ and τ⁻
-    const gatePos = (wij, asj)=> (asj < wij ? 1 : 0);
-    const gateNeg = (wij, asj)=> (asj > wij ? 1 : 0);
-
-    // Distances for each solution
-    const dE_PIS = dE_to(PIS);
-    const dT_PIS = dT_to(PIS);
-    const dE_NIS = dE_to(NIS);
-    const dT_NIS = dT_to(NIS);
-    const dE_ASp = dE_to(AS, gatePos);
-    const dT_ASp = dT_to(AS, gatePos);
-    const dE_ASn = dE_to(AS, gateNeg);
-    const dT_ASn = dT_to(AS, gateNeg);
-
-    // σ = std(dE) for each solution
-    function std(arr){
-      const m = arr.reduce((s,v)=>s+v,0)/(arr.length||1);
-      const v = arr.reduce((s,vv)=> s + (vv-m)*(vv-m), 0) / (arr.length or 1);
-      return Math.sqrt(v);
-    }
-    const s_PIS = std(dE_PIS);
-    const s_NIS = std(dE_NIS);
-    const s_ASp = std(dE_ASp);
-    const s_ASn = std(dE_ASn);
-
-    // Comprehensive distances d(S) = dE + σ·dT
-    const dPIS = dE_PIS.map((v,i)=> v + s_PIS * dT_PIS[i]);
-    const dNIS = dE_NIS.map((v,i)=> v + s_NIS * dT_NIS[i]);
-    const dASp = dE_ASp.map((v,i)=> v + s_ASp * dT_ASp[i]);
-    const dASn = dE_ASn.map((v,i)=> v + s_ASn * dT_ASn[i]);
-
-    // Step 6: dC_i  (smaller better; can be negative)
-    const dC = dPIS.map((_,i)=> ( dPIS[i] - dNIS[i] - dASp[i] + dASn[i] ) / 4 );
-    return dC;
+      return Math.sqrt(s);
+    });
   }
+  function dT_to(targetVec, gate=null){
+    return WA.map(row=>{
+      let s=0;
+      crits.forEach(c=>{
+        const diff = Math.abs(targetVec[c] - row[c]);
+        const g = gate ? gate(row[c], AS[c]) : 1;
+        if(g>0) s += diff;
+      });
+      return s;
+    });
+  }
+
+  // τ⁺: include when AS_j < w_j a_ij ; τ⁻: include when AS_j > w_j a_ij
+  const gatePos = (wij_aij, asj)=> (asj < wij_aij ? 1 : 0);
+  const gateNeg = (wij_aij, asj)=> (asj > wij_aij ? 1 : 0);
+
+  // Distances to each solution
+  const dE_PIS = dE_to(PIS),      dT_PIS = dT_to(PIS);
+  const dE_NIS = dE_to(NIS),      dT_NIS = dT_to(NIS);
+  const dE_ASp = dE_to(AS,gatePos), dT_ASp = dT_to(AS,gatePos);
+  const dE_ASn = dE_to(AS,gateNeg), dT_ASn = dT_to(AS,gateNeg);
+
+  // Eq. (14): σ = max(dE) - min(dE)   (spread/range, not std)
+  const sigma = arr => Math.max(...arr) - Math.min(...arr);
+  const s_PIS = sigma(dE_PIS);
+  const s_NIS = sigma(dE_NIS);
+  const s_ASp = sigma(dE_ASp);
+  const s_ASn = sigma(dE_ASn);
+
+  // Eq. (13): d = dE + σ * dE * dT
+  const dPIS = dE_PIS.map((v,i)=> v + s_PIS * v * dT_PIS[i]);
+  const dNIS = dE_NIS.map((v,i)=> v + s_NIS * v * dT_NIS[i]);
+  const dASp = dE_ASp.map((v,i)=> v + s_ASp * v * dT_ASp[i]);
+  const dASn = dE_ASn.map((v,i)=> v + s_ASn * v * dT_ASn[i]);
+
+  // Step 6 (Eq. 25): dC_i = ( dPIS - dNIS - dAS⁺ + dAS⁻ ) / 4   (lower is better)
+  return dPIS.map((_,i)=> ( dPIS[i] - dNIS[i] - dASp[i] + dASn[i] ) / 4 );
+}
 
   function runComparison(){
     if(!r2.length) return;
