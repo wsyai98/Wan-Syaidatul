@@ -278,8 +278,8 @@ html = r"""
 (function(){
   const $  = (id)=> document.getElementById(id);
   const show = (el,on=true)=> el.style.display = on ? "" : "none";
-  const PASTELS  = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"]; // bars & dots
-  const STRIKING = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"]; // scatter only
+  const PASTELS  = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"];
+  const STRIKING = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"];
 
   // Fixed colors per METHOD (legend + bars)
   const METHOD_COLORS = {
@@ -309,7 +309,6 @@ html = r"""
   const HAS_CORR    = "HAS_CORR_FLAG" === "1";
   const SAMPLE_TEXT = `__INJECT_SAMPLE_CSV__`;  // single source for load + download
 
-  // unify sample for both: the very same bytes for link & load
   $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(SAMPLE_TEXT);
   $("downloadSample").download = "sample.csv";
   $("loadSample").onclick = ()=>{ initSYAI(SAMPLE_TEXT); initCmp(SAMPLE_TEXT); };
@@ -550,23 +549,24 @@ html = r"""
     });
   }
 
-  // --------- COBRA (per Sec. 2.2, Eqs. 7–25) ----------
+  // --------- COBRA (per Sec. 2.2; Eqs. 7–13, 14–19, 20–29) ----------
   function computeCOBRA(rows, crits, types, weights, wmode){
     const n = rows.length, m = crits.length;
     const w = computeWeights(crits, weights, wmode);
 
-    // Step 2: max-normalize (Eq. 7-8)
-    const A = {}; // a_ij
+    // Step 2: max-normalize (Eq. 7 / Eq. 11 in other refs)
+    const A = {}; // f_ij
     crits.forEach(c=>{
       const vals = rows.map(r=> toNum(r[c]));
-      const M = Math.max(...vals) || 1;
-      A[c] = vals.map(x=> x / (M||1));
+      const M = Math.max(...vals);
+      const denom = (M===0)? 1 : M;
+      A[c] = vals.map(x=> x/denom);
     });
 
-    // Step 3: weighted normalized matrix Δ_w (Eq. 9)
+    // Step 3: weighted normalized matrix (Eq. 8 / Eq. 12)
     const WA = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, w[c]*A[c][i]])));
 
-    // Step 4: PIS/NIS/AS (Eqs. 10–12)
+    // Step 4: PIS, NIS, AS (Eqs. 9–13)
     const PIS={}, NIS={}, AS={};
     crits.forEach(c=>{
       const arr = WA.map(r=> r[c]);
@@ -580,61 +580,60 @@ html = r"""
       AS[c] = arr.reduce((s,v)=>s+v,0) / n;
     });
 
-    // helper distances (Euclidean and Taxicab)
-    function dE_to(targetVec, gate=null){ // sqrt(sum gate*(target - WA)^2)
+    // Distances helpers (apply τ-gates to BOTH norms)
+    // τ^+ = 1 if w_j a_ij >= AS_j, else 0 ; τ^- = 1 if w_j a_ij <= AS_j, else 0
+    const tauPlus = (wij, asj)=> (wij >= asj ? 1 : 0);
+    const tauMinus= (wij, asj)=> (wij <= asj ? 1 : 0);
+
+    function dE_to(targetVec, gate=null){
       return WA.map(row=>{
         let s=0;
         crits.forEach(c=>{
-          const diff = (targetVec[c]-row[c]);
-          const g = gate ? gate(row[c], AS[c]) : 1;
-          s += (g>0? (diff*diff) : 0);
+          const wij = row[c], diff = (targetVec[c]-wij);
+          const g = gate ? gate(wij, AS[c]) : 1;
+          if(g>0) s += diff*diff;
         });
         return Math.sqrt(s);
       });
     }
-    function dT_to(targetVec, gate=null){ // sum gate*|target - WA|
+    function dT_to(targetVec, gate=null){
       return WA.map(row=>{
         let s=0;
         crits.forEach(c=>{
-          const diff = Math.abs(targetVec[c]-row[c]);
-          const g = gate ? gate(row[c], AS[c]) : 1;
-          s += (g>0? diff : 0);
+          const wij=row[c], diff=Math.abs(targetVec[c]-wij);
+          const g = gate ? gate(wij, AS[c]) : 1;
+          if(g>0) s += diff;
         });
         return s;
       });
     }
 
-    // τ⁺ (Eq. 21): 1 if AS_j < w_j a_ij else 0
-    const gatePos = (wij, asj)=> (asj < wij ? 1 : 0);
-    // τ⁻ (Eq. 24): 1 if AS_j > w_j a_ij else 0
-    const gateNeg = (wij, asj)=> (asj > wij ? 1 : 0);
-
-    // Distances for each solution (Eqs. 15–23)
+    // Distances to solutions
     const dE_PIS = dE_to(PIS);
     const dT_PIS = dT_to(PIS);
     const dE_NIS = dE_to(NIS);
     const dT_NIS = dT_to(NIS);
-    const dE_ASp = dE_to(AS, gatePos);
-    const dT_ASp = dT_to(AS, gatePos);
-    const dE_ASn = dE_to(AS, gateNeg);
-    const dT_ASn = dT_to(AS, gateNeg);
+    const dE_ASp = dE_to(AS, tauPlus);
+    const dT_ASp = dT_to(AS, tauPlus);
+    const dE_ASn = dE_to(AS, tauMinus);
+    const dT_ASn = dT_to(AS, tauMinus);
 
-    // σ per solution (Eq. 14)
-    function sigma(arr){ const mx=Math.max(...arr), mn=Math.min(...arr); return mx - mn; }
-    const s_PIS = sigma(dE_PIS);
-    const s_NIS = sigma(dE_NIS);
-    const s_ASp = sigma(dE_ASp);
-    const s_ASn = sigma(dE_ASn);
+    // ρ = max dE(S) − min dE(S), per solution (Eq. 19)
+    const rho = arr => Math.max(...arr) - Math.min(...arr);
 
-    // Comprehensive distances d(S_j) (Eq. 13)  NOTE: text shows dE + σ × dE × dT
-    const dPIS = dE_PIS.map((v,i)=> v + s_PIS * v * dT_PIS[i]);
-    const dNIS = dE_NIS.map((v,i)=> v + s_NIS * v * dT_NIS[i]);
-    const dASp = dE_ASp.map((v,i)=> v + s_ASp * v * dT_ASp[i]);
-    const dASn = dE_ASn.map((v,i)=> v + s_ASn * v * dT_ASn[i]);
+    const rhoP = rho(dE_PIS);
+    const rhoN = rho(dE_NIS);
+    const rhoAp= rho(dE_ASp);
+    const rhoAn= rho(dE_ASn);
 
-    // Step 6: dC_i (Eq. 25), rank ASC (smaller is better; can be negative)
-    const dC = dPIS.map((_,i)=> ( dPIS[i] - dNIS[i] - dASp[i] + dASn[i] ) / 4 );
-    return dC;
+    // Comprehensive distances d(S_i) (Eq. 14 / Eq. 18)
+    const dPIS = dE_PIS.map((v,i)=> v + rhoP * v * dT_PIS[i]);
+    const dNIS = dE_NIS.map((v,i)=> v + rhoN * v * dT_NIS[i]);
+    const dASp = dE_ASp.map((v,i)=> v + rhoAp* v * dT_ASp[i]);
+    const dASn = dE_ASn.map((v,i)=> v + rhoAn* v * dT_ASn[i]);
+
+    // Step 6: dC_i (Eq. 25) — can be negative
+    return dPIS.map((_,i)=> ( dPIS[i] - dNIS[i] - dASp[i] + dASn[i] ) / 4 );
   }
 
   function runComparison(){
@@ -864,7 +863,7 @@ html = r"""
 
     // Legend (method → color)
     const leg = $("legend"); leg.innerHTML="";
-    order.forEach(m=>{
+    ["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"].forEach(m=>{
       const pill = document.createElement("span"); pill.className="pill";
       const sw = document.createElement("span"); sw.className="sw"; sw.style.background = METHOD_COLORS[m] || "#bbb";
       const txt = document.createElement("span"); txt.textContent = m;
