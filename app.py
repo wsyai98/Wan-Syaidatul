@@ -278,8 +278,8 @@ html = r"""
 (function(){
   const $  = (id)=> document.getElementById(id);
   const show = (el,on=true)=> el.style.display = on ? "" : "none";
-  const PASTELS  = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"];
-  const STRIKING = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"];
+  const PASTELS  = ["#a5b4fc","#f9a8d4","#bae6fd","#bbf7d0","#fde68a","#c7d2fe","#fecdd3","#fbcfe8","#bfdbfe","#d1fae5"]; // bars & dots
+  const STRIKING = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"]; // scatter only
 
   // Fixed colors per METHOD (legend + bars)
   const METHOD_COLORS = {
@@ -309,6 +309,7 @@ html = r"""
   const HAS_CORR    = "HAS_CORR_FLAG" === "1";
   const SAMPLE_TEXT = `__INJECT_SAMPLE_CSV__`;  // single source for load + download
 
+  // unify sample for both: the very same bytes for link & load
   $("downloadSample").href = "data:text/csv;charset=utf-8,"+encodeURIComponent(SAMPLE_TEXT);
   $("downloadSample").download = "sample.csv";
   $("loadSample").onclick = ()=>{ initSYAI(SAMPLE_TEXT); initCmp(SAMPLE_TEXT); };
@@ -470,7 +471,7 @@ html = r"""
 
       if((types[c]||"")==="Ideal (Goal)"){
         const inp=document.createElement("input"); inp.className="mt2"; inp.type="number"; inp.step="any"; inp.placeholder="Goal";
-        inp.value=ideals[c]||""; inp.oninput=()=> ideals[c]=inp.value;
+        inp.value=ideals[c]||""; inp.oninput()=> ideals[c]=inp.value;
         box.appendChild(inp);
       } else {
         delete ideals[c];
@@ -549,24 +550,23 @@ html = r"""
     });
   }
 
-  // --------- COBRA (per Sec. 2.2; Eqs. 7–13, 14–19, 20–29) ----------
+  // --------- COBRA (per Sec. 2.2, Eqs. 7–25) ----------
   function computeCOBRA(rows, crits, types, weights, wmode){
-    const n = rows.length, m = crits.length;
+    const n = rows.length;
     const w = computeWeights(crits, weights, wmode);
 
-    // Step 2: max-normalize (Eq. 7 / Eq. 11 in other refs)
-    const A = {}; // f_ij
+    // Step 2: max-normalize Δ (benefit/cost handled later by PIS/NIS)
+    const A = {};
     crits.forEach(c=>{
       const vals = rows.map(r=> toNum(r[c]));
-      const M = Math.max(...vals);
-      const denom = (M===0)? 1 : M;
-      A[c] = vals.map(x=> x/denom);
+      const M = Math.max(...vals) || 1;
+      A[c] = vals.map(x=> x / (M||1));
     });
 
-    // Step 3: weighted normalized matrix (Eq. 8 / Eq. 12)
+    // Step 3: weighted normalized matrix Δ_w
     const WA = rows.map((_,i)=> Object.fromEntries(crits.map(c=>[c, w[c]*A[c][i]])));
 
-    // Step 4: PIS, NIS, AS (Eqs. 9–13)
+    // Step 4: PIS/NIS/AS on Δ_w
     const PIS={}, NIS={}, AS={};
     crits.forEach(c=>{
       const arr = WA.map(r=> r[c]);
@@ -580,17 +580,13 @@ html = r"""
       AS[c] = arr.reduce((s,v)=>s+v,0) / n;
     });
 
-    // Distances helpers (apply τ-gates to BOTH norms)
-    // τ^+ = 1 if w_j a_ij >= AS_j, else 0 ; τ^- = 1 if w_j a_ij <= AS_j, else 0
-    const tauPlus = (wij, asj)=> (wij >= asj ? 1 : 0);
-    const tauMinus= (wij, asj)=> (wij <= asj ? 1 : 0);
-
+    // distances (Euclidean and Taxicab), with optional gates
     function dE_to(targetVec, gate=null){
       return WA.map(row=>{
         let s=0;
         crits.forEach(c=>{
-          const wij = row[c], diff = (targetVec[c]-wij);
-          const g = gate ? gate(wij, AS[c]) : 1;
+          const diff = (targetVec[c]-row[c]);
+          const g = gate ? gate(row[c], AS[c]) : 1;
           if(g>0) s += diff*diff;
         });
         return Math.sqrt(s);
@@ -600,40 +596,48 @@ html = r"""
       return WA.map(row=>{
         let s=0;
         crits.forEach(c=>{
-          const wij=row[c], diff=Math.abs(targetVec[c]-wij);
-          const g = gate ? gate(wij, AS[c]) : 1;
+          const diff = Math.abs(targetVec[c]-row[c]);
+          const g = gate ? gate(row[c], AS[c]) : 1;
           if(g>0) s += diff;
         });
         return s;
       });
     }
 
-    // Distances to solutions
+    // gates τ⁺ and τ⁻
+    const gatePos = (wij, asj)=> (asj < wij ? 1 : 0);
+    const gateNeg = (wij, asj)=> (asj > wij ? 1 : 0);
+
+    // Distances for each solution
     const dE_PIS = dE_to(PIS);
     const dT_PIS = dT_to(PIS);
     const dE_NIS = dE_to(NIS);
     const dT_NIS = dT_to(NIS);
-    const dE_ASp = dE_to(AS, tauPlus);
-    const dT_ASp = dT_to(AS, tauPlus);
-    const dE_ASn = dE_to(AS, tauMinus);
-    const dT_ASn = dT_to(AS, tauMinus);
+    const dE_ASp = dE_to(AS, gatePos);
+    const dT_ASp = dT_to(AS, gatePos);
+    const dE_ASn = dE_to(AS, gateNeg);
+    const dT_ASn = dT_to(AS, gateNeg);
 
-    // ρ = max dE(S) − min dE(S), per solution (Eq. 19)
-    const rho = arr => Math.max(...arr) - Math.min(...arr);
+    // σ = std(dE) for each solution
+    function std(arr){
+      const m = arr.reduce((s,v)=>s+v,0)/(arr.length||1);
+      const v = arr.reduce((s,vv)=> s + (vv-m)*(vv-m), 0) / (arr.length or 1);
+      return Math.sqrt(v);
+    }
+    const s_PIS = std(dE_PIS);
+    const s_NIS = std(dE_NIS);
+    const s_ASp = std(dE_ASp);
+    const s_ASn = std(dE_ASn);
 
-    const rhoP = rho(dE_PIS);
-    const rhoN = rho(dE_NIS);
-    const rhoAp= rho(dE_ASp);
-    const rhoAn= rho(dE_ASn);
+    // Comprehensive distances d(S) = dE + σ·dT
+    const dPIS = dE_PIS.map((v,i)=> v + s_PIS * dT_PIS[i]);
+    const dNIS = dE_NIS.map((v,i)=> v + s_NIS * dT_NIS[i]);
+    const dASp = dE_ASp.map((v,i)=> v + s_ASp * dT_ASp[i]);
+    const dASn = dE_ASn.map((v,i)=> v + s_ASn * dT_ASn[i]);
 
-    // Comprehensive distances d(S_i) (Eq. 14 / Eq. 18)
-    const dPIS = dE_PIS.map((v,i)=> v + rhoP * v * dT_PIS[i]);
-    const dNIS = dE_NIS.map((v,i)=> v + rhoN * v * dT_NIS[i]);
-    const dASp = dE_ASp.map((v,i)=> v + rhoAp* v * dT_ASp[i]);
-    const dASn = dE_ASn.map((v,i)=> v + rhoAn* v * dT_ASn[i]);
-
-    // Step 6: dC_i (Eq. 25) — can be negative
-    return dPIS.map((_,i)=> ( dPIS[i] - dNIS[i] - dASp[i] + dASn[i] ) / 4 );
+    // Step 6: dC_i  (smaller better; can be negative)
+    const dC = dPIS.map((_,i)=> ( dPIS[i] - dNIS[i] - dASp[i] + dASn[i] ) / 4 );
+    return dC;
   }
 
   function runComparison(){
@@ -863,7 +867,7 @@ html = r"""
 
     // Legend (method → color)
     const leg = $("legend"); leg.innerHTML="";
-    ["TOPSIS","VIKOR","SAW","SYAI","COBRA","WASPAS","MOORA"].forEach(m=>{
+    order.forEach(m=>{
       const pill = document.createElement("span"); pill.className="pill";
       const sw = document.createElement("span"); sw.className="sw"; sw.style.background = METHOD_COLORS[m] || "#bbb";
       const txt = document.createElement("span"); txt.textContent = m;
@@ -968,7 +972,7 @@ html = r"""
       for(let j=0;j<n;j++){
         const val = R[i][j];
         const x=padL + j*cellW, y=padT + i*cellH;
-        const rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
+        const rect=document.createElementNS("http://www.w3.org/200/svg","rect");
         rect.setAttribute("x",x); rect.setAttribute("y",y); rect.setAttribute("width",cellW-1); rect.setAttribute("height",cellH-1);
         rect.setAttribute("fill", colorFor(val)); rect.setAttribute("stroke","#ffffff"); rect.setAttribute("stroke-width","0.5");
         rect.addEventListener("mousemove",(ev)=> showTT(ev.clientX, ev.clientY, `<b>${methods[i]}</b> vs <b>${methods[j]}</b><br/>ρ = ${val.toFixed(3)}`));
@@ -983,17 +987,17 @@ html = r"""
     for(let s=0;s<steps;s++){
       const t = s/(steps-1);
       const val = -1 + 2*t;
-      const rr=document.createElementNS("http://www.w3.org/2000/svg","rect");
+      const rr=document.createElementNS("http://www.w3.org/200/svg","rect");
       rr.setAttribute("x",Lx); rr.setAttribute("y", Ly + (1-t)*Lh);
       rr.setAttribute("width",Lw); rr.setAttribute("height", Lh/steps + 1);
       rr.setAttribute("fill", colorFor(val)); svg.appendChild(rr);
     }
-    const frame=document.createElementNS("http://www.w3.org/2000/svg","rect");
+    const frame=document.createElementNS("http://www.w3.org/200/svg","rect");
     frame.setAttribute("x",Lx); frame.setAttribute("y",Ly); frame.setAttribute("width",Lw); frame.setAttribute("height",Lh);
     frame.setAttribute("fill","none"); frame.setAttribute("stroke","#000"); frame.setAttribute("stroke-width","0.8"); svg.appendChild(frame);
     [-1,-0.5,0,0.5,1].forEach(v=>{
       const y = Ly + (1-(v+1)/2)*Lh;
-      const t=document.createElementNS("http://www.w3.org/2000/svg","text");
+      const t=document.createElementNS("http://www.w3.org/200/svg","text");
       t.setAttribute("x", Lx + Lw + 6); t.setAttribute("y", y+4); t.setAttribute("font-size","12"); t.setAttribute("fill","#000");
       t.textContent = v.toFixed(1); svg.appendChild(t);
     });
