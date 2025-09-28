@@ -191,7 +191,7 @@ html = r"""
           <div class="section-title">SYAI Results</div>
           <div class="table-wrap"><table id="tblr1"></table></div>
           <div class="mt6">
-            <div class="hint mb2">Bar Chart (Closeness) — pastel bars, axes black (value on hover)</div>
+            <div class="hint mb2">Bar Chart (Closeness) </div>
             <div class="chart2"><svg id="bar1" width="100%" height="100%"></svg></div>
           </div>
           <div class="mt6">
@@ -245,13 +245,13 @@ html = r"""
           <div class="table-wrap"><table id="mmc_table"></table></div>
 
           <div class="mt6">
-            <div class="hint mb2">Grouped Bar — <b>method-colored</b> (axes black, hover values)</div>
+            <div class="hint mb2">Grouped Bar </div>
             <div class="chart2"><svg id="mmc_bar" width="100%" height="100%"></svg></div>
             <div id="legend" class="mt2"></div>
           </div>
 
           <div class="mt6">
-            <div class="hint">Scatter (striking color per alternative, Pearson line)</div>
+            <div class="hint">Scatter (Pearson line)</div>
             <div class="row" style="gap:12px;align-items:center">
               <div class="hint">X:</div>
               <select id="mmc_x"><option>SYAI</option><option>TOPSIS</option><option>VIKOR</option><option>SAW</option><option>COBRA</option><option>WASPAS</option><option>MOORA</option></select>
@@ -262,7 +262,7 @@ html = r"""
           </div>
 
           <div class="mt6">
-            <div class="hint mb2">Correlation Heatmap — <b>Spearman</b> (hot pink palette; legend on right; value on hover)</div>
+            <div class="hint mb2">Correlation Heatmap — <b>Spearman</b> </div>
             <div class="chartTall"><svg id="mmc_heat" width="100%" height="100%"></svg></div>
           </div>
         </div>
